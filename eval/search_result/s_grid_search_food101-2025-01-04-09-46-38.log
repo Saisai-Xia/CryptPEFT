@@ -1,0 +1,6 @@
+acc: 86.64554455445544
+n_param: 4.098677
+num_head: 4
+bottleneck: 300
+first_layer: 8
+dataset: food101

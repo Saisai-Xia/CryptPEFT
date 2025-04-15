@@ -1,0 +1,4 @@
+number of params (M): 7.17
+backbone model:Vit_B_16
+adapter_scalar:4.0
+acc:84.98613861386139

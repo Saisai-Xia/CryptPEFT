@@ -1,0 +1,241 @@
+from easydict import EasyDict
+from benchmark.models import Adjuster, VisionTransformer, transfer_scope_baseline
+import crypten.communicator as comm
+import crypten
+import crypten.nn
+from benchmark.utils.multiprocess_launcher import MultiProcessLauncher
+from benchmark.utils.multimachine_launcher import MultiMachineLauncher
+import torch
+import time
+import torchvision
+import argparse
+from log_utils import Logger
+import gc
+
+from crypten.config import cfg
+cfg.communicator.verbose = True
+crypten.debug.configure_logging()
+
+
+def get_args_parser():
+    parser = argparse.ArgumentParser(description="CrypTen Cifar Training")
+    parser.add_argument(
+        "--world_size",
+        type=int,
+        default=2,
+        help="The number of parties to launch. Each party acts as its own process",
+    )
+    parser.add_argument(
+        "--rank",
+        type=int,
+        default=0,
+        help="The rank of the current party. Each party acts as its own process",
+    )
+    parser.add_argument(
+        "--master_address",
+        type=str,
+        default = "127.0.0.1",
+        help="master IP Address",
+    )
+    parser.add_argument(
+        "--master_port",
+        type=int,
+        default=29557,
+        help="master port",
+    )
+    parser.add_argument(
+        "--backend",
+        type=str,
+        default="NCCL",
+        help="backend for torhc.distributed, 'NCCL' or 'gloo'.",
+    )
+    #for benchmark
+    parser.add_argument("--method", type=str, default = "lora", help="benchmark method",choices=["lora", "adaptformer", "simple_fine_tuning", "CryptPEFT"]) 
+    parser.add_argument("--dataset", type=str, default = "cifar100")
+    parser.add_argument("--batch_size", type=int, default = 64)
+    parser.add_argument("--transfer_scope", type=int, default = 1)
+    parser.add_argument("--degree", type=int, default = 6)
+    parser.add_argument("--GPU", default=False, action='store_true')
+
+    return parser
+
+def set_config(args):
+
+    config = EasyDict(
+    dim = 768,
+    image_size = 224,
+    patch_size = 16,
+    num_encoderblk = 12,
+    mlp_dim = 768*4,
+    mlp_drop = 0.0,
+    layer_norm_eps = 1e-6,
+    num_heads = 12,
+    attn_drop = 0.0,
+    proj_drop = 0.0,
+    use_approx = True,
+    encoder_drop = 0.0,
+    bottleneck = 300,
+    adjuster_drop = 0.1,
+    adjuster_scale = 4.0,
+    adjuster_n_blks = 1,
+    num_classes = 100,
+    transfer_scope = 1,
+    use_PEFT = None,
+    batch_size = args.batch_size,
+    degree = args.degree,
+    GPU = args.GPU,
+    )
+    cifar100_CryptPEFT_adapter_set = {'h': 1, 'r': 120, 's': 2}
+    food101_CryptPEFT_adapter_set = {'h': 2, 'r': 120, 's': 2}
+    svhn_CryptPEFT_adapter_set = {'h': 2, 'r': 120, 's': 2}
+
+    if args.dataset == "cifar100":
+        config.num_classes = 100
+    elif args.dataset == "food101":
+        config.num_classes = 101
+    elif args.dataset == "svhn":
+        config.num_classes = 10
+    
+    if args.method == "lora":
+        config.use_PEFT = "lora"
+    elif args.method == "adaptformer":
+        config.use_PEFT = "adaptformer"
+    elif args.method == "simple_fine_tuning":
+        config.transfer_scope = args.transfer_scope
+    elif args.method == "CryptPEFT":
+        if args.dataset == "cifar100":
+            config.num_heads = cifar100_CryptPEFT_adapter_set['h']
+            config.bottleneck = cifar100_CryptPEFT_adapter_set['r']
+            config.transfer_scope = cifar100_CryptPEFT_adapter_set['s']
+        elif args.dataset == "food101":
+            config.num_heads = food101_CryptPEFT_adapter_set['h']
+            config.bottleneck = food101_CryptPEFT_adapter_set['r']
+            config.transfer_scope = food101_CryptPEFT_adapter_set['s']
+        elif args.dataset == "svhn":
+            config.num_heads = svhn_CryptPEFT_adapter_set['h']
+            config.bottleneck = svhn_CryptPEFT_adapter_set['r']
+            config.transfer_scope = svhn_CryptPEFT_adapter_set['s']
+
+    config["dataset"] = args.dataset
+    config["method"] = args.method
+    config["batch_size"] = args.batch_size
+
+
+    return config
+
+
+
+def run_test(args):
+    Alice = 0
+    Server = 1
+    crypten.init()
+    rank = comm.get().get_rank()
+
+    if rank == Alice:
+        logger = Logger(log2file=True, mode=f"B_WAN_{args.method}_{args.dataset}_batch_size_{args.batch_size}", path="benchmark/logs")
+
+    if args.method in ["lora", "adaptformer"]:
+        #get input size
+        test_full_ViT = True
+    else:
+        test_full_ViT = False
+
+    if not test_full_ViT:
+        B = args.batch_size
+        N = (224//16)**2 + 1
+        C = 768
+        input_size = [B, N, C]
+    else:
+        B = args.batch_size
+        C = 3
+        H = 224
+        W = 224
+        input_size = [B, C, H, W]
+
+    # #for timing
+    # dummy_input = torch.empty(input_size)
+    # enc = True
+    # if(enc):
+    #     model = transfer_scope_baseline(args=args)
+    #     #Server has actual model
+    #     model = model.encrypt(src=Server)
+    #     #Alice has actual input
+    #     input = crypten.cryptensor(dummy_input, src=Alice)
+    # else:
+    #     model = torchvision.models.vit_b_16()
+    #     input = dummy_input
+    plaintext_input_size = [args.batch_size, 3, 224, 224]
+    plaintext_model = torchvision.models.vit_b_16()
+    plaintext_input = torch.empty(plaintext_input_size)
+
+    dummy_input = torch.empty(input_size)
+
+    if args.method in ["lora", "adaptformer"]:
+        dummy_model = VisionTransformer(args)
+        dummy_model = dummy_model.encrypt(src=Server)
+        dummy_input = crypten.cryptensor(dummy_input, src=Alice)
+    elif args.method == "simple_fine_tuning":
+        dummy_model = transfer_scope_baseline(args=args)
+        dummy_model = dummy_model.encrypt(src=Server)
+        dummy_input = crypten.cryptensor(dummy_input, src=Alice)
+    elif args.method == "CryptPEFT":
+        dummy_model = Adjuster(args)
+        dummy_model = dummy_model.encrypt(src=Server)
+        dummy_input = crypten.cryptensor(dummy_input, src=Alice)
+
+    if args.GPU:
+        plaintext_input = plaintext_input.to(f"cuda:{rank}")
+        plaintext_model = plaintext_model.to(f"cuda:{rank}")
+        dummy_input.cuda(rank)
+        dummy_model.cuda(rank)
+
+    plaintext_model.eval()
+    dummy_model.eval()
+    with torch.no_grad():
+        plaintext_time = 0
+        #plaintext time
+        if args.method in ["simple_fine_tuning", "CryptPEFT"]:
+            time_s = time.time()
+            output = plaintext_model(plaintext_input)
+            time_e = time.time()
+            plaintext_time = time_e - time_s
+            
+            del plaintext_model 
+            del plaintext_input
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        comm.get().reset_communication_stats()
+        time_s = time.time()
+        output = dummy_model(dummy_input)
+        time_e = time.time()
+
+    cost = {}
+
+    cost["total_time"] = (time_e - time_s + plaintext_time) / args.batch_size
+    cost["comm_round"] = comm.get().get_communication_stats()["rounds"]
+    cost["comm_cost"] = (comm.get().get_communication_stats()["bytes"] / (1024*1024*1024)) / args.batch_size #B -> GB
+    cost["comm_time"] = comm.get().get_communication_stats()["time"] / args.batch_size
+    
+    if rank == Alice:
+        for key, value in cost.items():
+            logger.add_line(f"{key}: {value}")
+
+    print("finish, and print communication stats")
+    comm.get().print_communication_stats()
+
+def main():
+    parser = get_args_parser()
+    param = parser.parse_args()
+    args = set_config(param)
+    #launcher = MultiProcessLauncher(2, run_test, args)
+    launcher = MultiMachineLauncher(param.world_size, param.rank, param.master_address, param.master_port, run_test, args)
+    launcher.start()
+    launcher.join()
+    launcher.terminate()
+
+if __name__ == '__main__':
+    main()
+
+
+
