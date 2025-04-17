@@ -1,21 +1,22 @@
 export PYTHONPATH=../:$PYTHONPATH
-for batch_size in 32 64 96 128
+for batch_size in 1
 do
 for dataset in cifar100
 do
-for method in simple_fine_tuning
+for method in mpcvit
 do
-for scope in 1
+for atten_method in CryptPEFT
 do
-for degree in 6
+for last_layers in 1
 do
     python3 benchmark/secure_inference.py \
     --batch_size $batch_size \
     --rank $1 \
+    --atten_method $atten_method \
     --method $method \
     --dataset $dataset \
-    --degree $degree \
-    --transfer_scope $scope
+    --ablation \
+    --transfer_scope $last_layers
 done
 done
 done

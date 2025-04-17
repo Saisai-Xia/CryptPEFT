@@ -94,7 +94,7 @@ class EncoderBlock(nn.Module):
         self.ln_2 = norm_layer(hidden_dim)
         self.mlp = MLPBlock(hidden_dim, mlp_dim, dropout)
         if self.config.adapt_on and not self.config.fulltune and self.config.adapter_type == "adaptformer":
-            self.adaptmlp = adaptformer(dropout=0.1, d_model=hidden_dim, bottleneck=64, adapter_scalar=0.1)
+            self.adaptmlp = adaptformer(dropout=0.1, d_model=hidden_dim, bottleneck=64, adapter_scaler=0.1)
 
         if self.config.adapt_on and not self.config.fulltune and self.config.adapter_type == "lora":
             self.adaptmlp = lora(dropout=0.1, d_model=hidden_dim, bottleneck=8)
@@ -135,6 +135,7 @@ class Encoder(nn.Module):
         # Note that batch_size is on the first dim because
         # we have batch_first=True in nn.MultiAttention() by default
         self.first_layer=config.first_layer
+        self.layer_id = config.layer_id
         self.config = config
         self.pos_embedding = nn.Parameter(torch.empty(1, seq_length, hidden_dim).normal_(std=0.02))  # from BERT
         self.dropout = nn.Dropout(dropout)
@@ -153,7 +154,7 @@ class Encoder(nn.Module):
             if self.config.adapt_on and not self.config.fulltune and self.config.adapter_type == "CryptPEFT":
                 if i >=self.first_layer:
                     if self.config.adapter_arch == "CryptPEFT":
-                        adapters[f"adapter_layer_{i}"] = CryptPEFT_adapter(num_heads=self.config.num_head, attention_dropout=0.0, norm_layer=norm_layer,d_model=hidden_dim, approx=self.config.approx,
+                        adapters[f"adapter_layer_{i}"] = CryptPEFT_adapter(num_heads=self.config.num_head, attention_dropout=0.0, norm_layer=norm_layer,d_model=hidden_dim,
                                                                     bottleneck=self.config.bottleneck, dropout=0.1, adapter_scaler=self.config.adapter_scaler, mlp_dim=self.config.bottleneck, num_blk=self.config.num_repeat_blk)
                     elif self.config.adapter_arch == "adaptformer":
                         adapters[f"adapter_layer_{i}"] = adaptformer(dropout=0.1, d_model=hidden_dim, bottleneck=64, adapter_scaler=0.1)
@@ -161,10 +162,19 @@ class Encoder(nn.Module):
                         adapters[f"adapter_layer_{i}"] = lora(dropout=0.1, d_model=hidden_dim, bottleneck=8)
                 else:
                     adapters[f"adapter_layer_{i}"] = nn.Identity()
+            #baseline
+            if self.config.adapt_on and not self.config.fulltune and self.config.adapter_type == "single_adapter":
+                if i == self.layer_id:
+                    if self.config.adapter_arch == "CryptPEFT":
+                        print("hellp")
+                        adapters[f"adapter_layer_{i}"] = CryptPEFT_adapter(num_heads=self.config.num_head, attention_dropout=0.0, norm_layer=norm_layer,d_model=hidden_dim,
+                                                                    bottleneck=self.config.bottleneck, dropout=0.1, adapter_scaler=self.config.adapter_scaler, mlp_dim=self.config.bottleneck, num_blk=self.config.num_repeat_blk)
+                else:
+                    adapters[f"adapter_layer_{i}"] = nn.Identity()
         
         self.layers = nn.Sequential(layers)
 
-        if self.config.adapt_on and not self.config.fulltune and self.config.adapter_type == "CryptPEFT":
+        if self.config.adapt_on and not self.config.fulltune and self.config.adapter_type in ["CryptPEFT", "single_adapter"]:
             self.adapters = nn.Sequential(adapters)
 
         self.ln = norm_layer(hidden_dim)

@@ -49,7 +49,7 @@ def get_args_parser():
 
 
     # custom configs
-    parser.add_argument('--dataset', default='imagenet', choices=['imagenet', 'cifar100', 'flowers102', 'svhn', 'food101', 'caltech101', 'sun397', 'cifar10'])
+    parser.add_argument('--dataset', default='cifar100', choices=['cifar100', 'flowers102', 'svhn', 'food101', 'cifar10'])
 
     # CryptPEFT related parameters
     parser.add_argument('--adapt_on', default=False, action='store_true', help='whether activate Adapter')
@@ -59,11 +59,15 @@ def get_args_parser():
     parser.add_argument('--adapter_scaler', default="0.1", type=str, help='adapter scaler')
     parser.add_argument('--fulltune', default=False, action='store_true', help='full finetune model')
 
-    parser.add_argument('--approx', default=None, type=int, help='whether use approx')
+
     parser.add_argument('--first_layer', default=6, type=int, help='Start using outputs for transfer learning.')
     parser.add_argument('--num_head', default=12, type=int)
 
+    parser.add_argument('--layer_id', default=None, type=int)
+
     parser.add_argument('--adapter_arch', default="CryptPEFT", type=str, choices=['lora', 'CryptPEFT', 'adaptformer'], help='adapter architecture')
+
+    parser.add_argument('--option', default="reproduce", type=str, help='what you wanna do? -> [reproduce, utility_first, efficiency_first, OWC_PEFT, TWC_PEFT]')
 
     return parser
 
@@ -157,8 +161,14 @@ def test_CryptPEFT(args, device):
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     backbone_n_parameters = sum(p.numel() for p in model.parameters() if not p.requires_grad)
 
-    if n_parameters > 0.05*backbone_n_parameters:
-        return 0.0, n_parameters / 1.e6
+    if args.option == "utility_first":
+        param_limit = 0.05
+    elif args.option == "efficiency_first":
+        param_limit = 0.02
+
+    if args.option in ["utility_first", "efficiency_first"]:
+        if n_parameters > param_limit * backbone_n_parameters:
+            return 0.0, n_parameters / 1.e6
 
     print('number of params (M): %.2f' % (n_parameters / 1.e6))
 
@@ -173,7 +183,6 @@ def test_CryptPEFT(args, device):
         _, _, accuracy_test, _ = train_and_test_model(model, trainloader, testloader, criterion, optimizer, device, epoch)
         scheduler.step()
     
-    # logger.add_line(f"acc:{accuracy_test}")
 
     return accuracy_test, n_parameters / 1.e6
 
@@ -182,87 +191,141 @@ def test_CryptPEFT(args, device):
 def main(args):
     print(torch.cuda.is_available())
     DEVICE = torch.device(args.device)
-    search = False
-    approx = True
-    baseline = False
-    old_adapter_arch = False
-    if search:
+
+
+    if args.option == "utility_first":
         logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"s_auto_search_"+args.dataset, path=args.log_dir)
-        num_heads = [1,2,4,6,10,12]
-        bottlenecks = [60, 120, 180, 240, 300]
-        first_layers = [6,8,10]
+        H = [1,2,4,6,10,12]
+        R = [60, 120, 180, 240, 300]
+        S = [6,4,2]
         res = {}
         max_acc = 0.0
-        for num_head in num_heads:
-            for bottleneck in bottlenecks:
-                for first_layer in first_layers:
-                    args.rank = bottleneck
-                    args.first_layer = first_layer
+        for num_head in H:
+            for rank in R:
+                for s in S:
+                    args.rank = rank
+                    args.first_layer = 12-s
                     args.num_head = num_head
-                    print(f"now-> num_head{num_head} bottleneck{bottleneck} first_layer{first_layer}")
+                    print(f"now-> num_head{num_head} rank{rank} scope{s}")
                     acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
                     if(acc > max_acc):
                         max_acc = acc
                         res['acc'] = max_acc
                         res['n_param'] = n_param
                         res['num_head'] = num_head
-                        res['bottleneck'] = bottleneck
-                        res['first_layer'] = first_layer
+                        res['rank'] = rank
+                        res['scope'] = s
         res['dataset'] = args.dataset
 
         print("auto search finish")
         for key, value in res.items():
                 logger.add_line(f"{key}: {value}")
-    elif approx: # use efficiency-first configuration
-        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"s_approx_"+args.dataset, path=args.log_dir)
-        ViT_B_layers = 12
-        if args.dataset == 'cifar100':
-            param = [1, 120, 2] # h, r, s
-            args.rank = param[1]
-            args.first_layer = ViT_B_layers - param[2]
-            args.num_head = param[0]
-            acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
-            logger.add_line(f"acc:{acc}")
-            logger.add_line(f"n_param:{n_param}")
-            logger.add_line(f"num_head:{args.num_head}")
-            logger.add_line(f"rank:{args.rank}")
-            logger.add_line(f"first_layer:{args.first_layer}")
-            logger.add_line(f"approx_p:{args.approx}")
+    elif args.option == "efficiency_first":
+        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"s_auto_search_"+args.dataset, path=args.log_dir)
+        H = [1, 2]
+        R = [60, 120]
+        S = [1, 2]
+        res = {}
+        max_acc = 0.0
+        for num_head in H:
+            for rank in R:
+                for s in S:
+                    args.rank = rank
+                    args.first_layer = 12-s
+                    args.num_head = num_head
+                    print(f"now-> num_head{num_head} rank{rank} scope{s}")
+                    acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
+                    if(acc > max_acc):
+                        max_acc = acc
+                        res['acc'] = max_acc
+                        res['n_param'] = n_param
+                        res['num_head'] = num_head
+                        res['rank'] = rank
+                        res['scope'] = s
+        res['dataset'] = args.dataset
 
-        elif args.dataset == 'food101':
-            param = [2, 120, 2] # h, r, s
-            args.rank = param[1]
-            args.first_layer = ViT_B_layers - param[2]
-            args.num_head = param[0]
-            acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
-            logger.add_line(f"acc:{acc}")
-            logger.add_line(f"n_param:{n_param}")
-            logger.add_line(f"num_head:{args.num_head}")
-            logger.add_line(f"rank:{args.rank}")
-            logger.add_line(f"first_layer:{args.first_layer}")
-            logger.add_line(f"approx_p:{args.approx}")
-        
-        elif args.dataset == 'svhn':
-            param = [2, 120, 2] # h, r, s
-            args.rank = param[1]
-            args.first_layer = ViT_B_layers - param[2]
-            args.num_head = param[0]
-            acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
-            logger.add_line(f"acc:{acc}")
-            logger.add_line(f"n_param:{n_param}")
-            logger.add_line(f"num_head:{args.num_head}")
-            logger.add_line(f"rank:{args.rank}")
-            logger.add_line(f"first_layer:{args.first_layer}")
-            logger.add_line(f"approx_p:{args.approx}")
-
-    elif old_adapter_arch: # lora and adaptformer
-        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"s_arch_{args.adapter_arch}_"+args.dataset, path=args.log_dir)
-        s = 2 # for efficiency priority
-        ViT_B_layers = 12
-        args.first_layer = ViT_B_layers - s
+        print("auto search finish")
+        for key, value in res.items():
+                logger.add_line(f"{key}: {value}")
+    elif args.option == "OWC_PEFT":
+        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"OWC_PEFT_{args.adapter_arch}_"+args.dataset, path=args.log_dir)
+        args.first_layer = 0
         acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
         logger.add_line(f"acc:{acc}")
         logger.add_line(f"n_param:{n_param}")
+    elif args.option == "TWC_PEFT":
+        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"TWC_PEFT_{args.adapter_type}_"+args.dataset, path=args.log_dir)
+        acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
+        logger.add_line(f"acc:{acc}")
+        logger.add_line(f"n_param:{n_param}")
+    elif args.option == "reproduce":
+        method = "utility_first" # utility first or efficiency first
+        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"{args.option}_{method}_{args.dataset}", path=args.log_dir)
+        if method == "utility_first":
+            if args.dataset == "cifar10":
+                adapter_struct = [12,240,4]
+            elif args.dataset == "cifar100":
+                adapter_struct = [1,180,2]
+            elif args.dataset == "flowers102":
+                adapter_struct = [12,180,4]
+            elif args.dataset == "svhn":
+                adapter_struct = [10,180,6]
+            elif args.dataset == "food101":
+                adapter_struct = [10,240,4]
+        elif method == "efficiency_first":
+            if args.dataset == "cifar10":
+                adapter_struct = [1,120,2]
+            elif args.dataset == "cifar100":
+                adapter_struct = [1,60,2]
+            elif args.dataset == "flowers102":
+                adapter_struct = [1,120,2]
+            elif args.dataset == "svhn":
+                adapter_struct = [2,60,2]
+            elif args.dataset == "food101":
+                adapter_struct = [2,120,2]
+        args.num_head = adapter_struct[0]
+        args.rank = adapter_struct[1]
+        args.first_layer = 12 - adapter_struct[2]
+
+        acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
+        logger.add_line(f"acc:{acc}")
+        logger.add_line(f"n_param:{n_param}")
+    elif args.option == "SFT":
+        num_layer = 1 #Last layer->1    Last 2 layer->2
+        args.finetune_layer = num_layer
+        args.adapt_on = False
+        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"{args.option}_{num_layer}_{args.dataset}", path=args.log_dir)
+        acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
+        logger.add_line(f"acc:{acc}")
+        logger.add_line(f"n_param:{n_param}")
+    elif args.option == "adapter_place":
+        args.adapter_type = "single_adapter"
+        layer_id = [0,1,2,3,4,5,6,7,8,9,10,11]
+        for id in layer_id:
+            args.layer_id = id
+            logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"{args.option}_{id}_{args.dataset}", path=args.log_dir)
+            acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
+            logger.add_line(f"acc:{acc}")
+            logger.add_line(f"n_param:{n_param}")
+    elif args.option == "scaler":
+        scaler = [0.1, 0.5, 1.0, 2.0, 4.0, 6.0]
+        ######our paper used######
+        args.rank = 120
+        args.first_layer = 2
+        args.num_head = 2
+        for scale in scaler:
+            args.adapter_scaler = scale
+            logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"{args.option}_{scale}_{args.dataset}", path=args.log_dir)
+            acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
+            logger.add_line(f"acc:{acc}")
+            logger.add_line(f"n_param:{n_param}")
+    elif args.option == "test":
+        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"{args.option}_{args.adapter_type}_{args.dataset}", path=args.log_dir)
+        acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
+        logger.add_line(f"acc:{acc}")
+        logger.add_line(f"n_param:{n_param}")
+
+
 
 
     

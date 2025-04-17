@@ -1,5 +1,5 @@
 from easydict import EasyDict
-from benchmark.models import Adjuster, VisionTransformer, transfer_scope_baseline
+from benchmark.models import Adjuster, VisionTransformer, transfer_scope_baseline, MPCViT, BaseAdapter
 import crypten.communicator as comm
 import crypten
 import crypten.nn
@@ -50,44 +50,82 @@ def get_args_parser():
         help="backend for torhc.distributed, 'NCCL' or 'gloo'.",
     )
     #for benchmark
-    parser.add_argument("--method", type=str, default = "lora", help="benchmark method",choices=["lora", "adaptformer", "simple_fine_tuning", "CryptPEFT"]) 
+    parser.add_argument("--method", type=str, default = "lora", help="benchmark method",choices=["lora", "adaptformer", "simple_fine_tuning", "CryptPEFT", "mpcvit", "base_adapter"]) 
+    parser.add_argument("--atten_method", type=str, default="CryptPEFT")
     parser.add_argument("--dataset", type=str, default = "cifar100")
     parser.add_argument("--batch_size", type=int, default = 64)
     parser.add_argument("--transfer_scope", type=int, default = 1)
-    parser.add_argument("--degree", type=int, default = 6)
-    parser.add_argument("--GPU", default=False, action='store_true')
+    parser.add_argument("--ablation", default=False, action='store_true')
+
 
     return parser
 
 def set_config(args):
 
-    config = EasyDict(
-    dim = 768,
-    image_size = 224,
-    patch_size = 16,
-    num_encoderblk = 12,
-    mlp_dim = 768*4,
-    mlp_drop = 0.0,
-    layer_norm_eps = 1e-6,
-    num_heads = 12,
-    attn_drop = 0.0,
-    proj_drop = 0.0,
-    use_approx = True,
-    encoder_drop = 0.0,
-    bottleneck = 300,
-    adjuster_drop = 0.1,
-    adjuster_scale = 4.0,
-    adjuster_n_blks = 1,
-    num_classes = 100,
-    transfer_scope = 1,
-    use_PEFT = None,
-    batch_size = args.batch_size,
-    degree = args.degree,
-    GPU = args.GPU,
-    )
-    cifar100_CryptPEFT_adapter_set = {'h': 1, 'r': 120, 's': 2}
+    if args.method == "mpcvit":
+        if args.dataset == "cifar100":
+            alpha_list = [[1, 1, 1, 1],
+                            [1, 1, 1, 1],
+                            [1, 1, 1, 1],
+                            [1, 0, 1, 1],
+                            [1, 1, 1, 1],
+                            [0, 0, 0, 0],
+                            [0, 0, 0, 1]] # get from https://github.com/PKU-SEC-Lab/mpcvit vit_7_4_32 for cifar100
+            num_classes = 100
+        elif args.dataset == "cifar10":
+            alpha_list = [[1, 0, 0, 0],
+                            [1, 1, 1, 1],
+                            [1, 1, 1, 1],
+                            [1, 1, 1, 1],
+                            [0, 1, 1, 1],
+                            [0, 1, 0, 1],
+                            [0, 1, 0, 1]]
+            num_classes = 10
+        config = EasyDict(
+        dim =256,
+        alpha_list = alpha_list,
+        image_size = 32,
+        patch_size = 4,
+        num_encoderblk = 7,
+        mlp_dim = 256*4,
+        mlp_drop = 0.0,
+        layer_norm_eps = 1e-6,
+        num_heads = 4,
+        attn_drop = 0.0,
+        proj_drop = 0.0,
+        use_approx = False,
+        encoder_drop = 0.0,
+        num_classes = num_classes,
+        batch_size = args.batch_size,
+        )
+    else:
+        config = EasyDict(
+        dim = 768,
+        image_size = 224,
+        patch_size = 16,
+        num_encoderblk = 12,
+        mlp_dim = 768*4,
+        mlp_drop = 0.0,
+        layer_norm_eps = 1e-6,
+        num_heads = 12,
+        attn_drop = 0.0,
+        proj_drop = 0.0,
+        use_approx = True,
+        encoder_drop = 0.0,
+        bottleneck = 120,
+        adjuster_drop = 0.1,
+        adjuster_scale = 4.0,
+        adjuster_n_blks = 1,
+        num_classes = 100,
+        transfer_scope = 1,
+        use_PEFT = None,
+        batch_size = args.batch_size,
+        )
+    cifar100_CryptPEFT_adapter_set = {'h': 1, 'r': 60, 's': 2}
     food101_CryptPEFT_adapter_set = {'h': 2, 'r': 120, 's': 2}
-    svhn_CryptPEFT_adapter_set = {'h': 2, 'r': 120, 's': 2}
+    svhn_CryptPEFT_adapter_set = {'h': 2, 'r': 60, 's': 2}
+    cifar10_CryptPEFT_adapter_set = {'h': 1, 'r': 120, 's': 2}
+    flowers102_CryptPEFT_adapter_set = {'h': 1, 'r': 120, 's': 2}
 
     if args.dataset == "cifar100":
         config.num_classes = 100
@@ -95,6 +133,10 @@ def set_config(args):
         config.num_classes = 101
     elif args.dataset == "svhn":
         config.num_classes = 10
+    elif args.dataset == "cifar10":
+        config.num_classes = 10
+    elif args.dataset == "flowers102":
+        config.num_classes = 102
     
     if args.method == "lora":
         config.use_PEFT = "lora"
@@ -115,10 +157,23 @@ def set_config(args):
             config.num_heads = svhn_CryptPEFT_adapter_set['h']
             config.bottleneck = svhn_CryptPEFT_adapter_set['r']
             config.transfer_scope = svhn_CryptPEFT_adapter_set['s']
+        elif args.dataset == "cifar10":
+            config.num_heads = cifar10_CryptPEFT_adapter_set['h']
+            config.bottleneck = cifar10_CryptPEFT_adapter_set['r']
+            config.transfer_scope = cifar10_CryptPEFT_adapter_set['s']
+        elif args.dataset == "flowers102":
+            config.num_heads = flowers102_CryptPEFT_adapter_set['h']
+            config.bottleneck = flowers102_CryptPEFT_adapter_set['r']
+            config.transfer_scope = flowers102_CryptPEFT_adapter_set['s']
+    elif args.method == "base_adapter":
+        config.num_heads = 2
+        config.bottleneck = 120
 
     config["dataset"] = args.dataset
     config["method"] = args.method
     config["batch_size"] = args.batch_size
+    config["atten_method"] = args.atten_method
+    config["ablation"] = args.ablation
 
 
     return config
@@ -132,9 +187,9 @@ def run_test(args):
     rank = comm.get().get_rank()
 
     if rank == Alice:
-        logger = Logger(log2file=True, mode=f"B_WAN_{args.method}_{args.dataset}_batch_size_{args.batch_size}", path="benchmark/logs")
+        logger = Logger(log2file=True, mode=f"A_{args.method}_{args.dataset}", path="benchmark/Final_logs")
 
-    if args.method in ["lora", "adaptformer"]:
+    if args.method in ["lora", "adaptformer", "mpcvit"]:
         #get input size
         test_full_ViT = True
     else:
@@ -146,24 +201,20 @@ def run_test(args):
         C = 768
         input_size = [B, N, C]
     else:
-        B = args.batch_size
-        C = 3
-        H = 224
-        W = 224
-        input_size = [B, C, H, W]
+        if args.method == "mpcvit":
+            B = args.batch_size
+            C = 3
+            H = 32
+            W = 32
+            input_size = [B, C, H, W]
+        else:
+            B = args.batch_size
+            C = 3
+            H = 224
+            W = 224
+            input_size = [B, C, H, W]
 
-    # #for timing
-    # dummy_input = torch.empty(input_size)
-    # enc = True
-    # if(enc):
-    #     model = transfer_scope_baseline(args=args)
-    #     #Server has actual model
-    #     model = model.encrypt(src=Server)
-    #     #Alice has actual input
-    #     input = crypten.cryptensor(dummy_input, src=Alice)
-    # else:
-    #     model = torchvision.models.vit_b_16()
-    #     input = dummy_input
+
     plaintext_input_size = [args.batch_size, 3, 224, 224]
     plaintext_model = torchvision.models.vit_b_16()
     plaintext_input = torch.empty(plaintext_input_size)
@@ -182,8 +233,17 @@ def run_test(args):
         dummy_model = Adjuster(args)
         dummy_model = dummy_model.encrypt(src=Server)
         dummy_input = crypten.cryptensor(dummy_input, src=Alice)
+    elif args.method == "mpcvit":
+        dummy_model = MPCViT(args)
+        dummy_model = dummy_model.encrypt(src=Server)
+        dummy_input = crypten.cryptensor(dummy_input, src=Alice)
+    elif args.method == "base_adapter":
+        dummy_model = BaseAdapter(args)
+        dummy_model = dummy_model.encrypt(src=Server)
+        dummy_input = crypten.cryptensor(dummy_input, src=Alice)
 
-    if args.GPU:
+    use_GPU = False
+    if use_GPU:
         plaintext_input = plaintext_input.to(f"cuda:{rank}")
         plaintext_model = plaintext_model.to(f"cuda:{rank}")
         dummy_input.cuda(rank)

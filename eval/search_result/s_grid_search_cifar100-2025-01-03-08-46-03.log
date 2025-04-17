@@ -1,6 +1,0 @@
-acc: 87.11
-n_param: 4.097908
-num_head: 12
-bottleneck: 300
-first_layer: 8
-dataset: cifar100

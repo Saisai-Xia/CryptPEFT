@@ -1,6 +1,0 @@
-acc: 93.67317148125385
-n_param: 2.850994
-num_head: 12
-bottleneck: 180
-first_layer: 6
-dataset: svhn

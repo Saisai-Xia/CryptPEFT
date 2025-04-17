@@ -110,7 +110,7 @@ def get_CryptPEFT_model(args):
     num_repeat_blk = args.num_repeat_blk,
     first_layer = args.first_layer,
     num_head = args.num_head,
-    approx = args.approx,
+    layer_id = args.layer_id,
     adapter_arch = args.adapter_arch,
     )
     if args.model == "Vit_B_16":
