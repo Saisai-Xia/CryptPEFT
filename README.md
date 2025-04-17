@@ -29,9 +29,11 @@ The eval_CryptPEFT.sh script takes several configuration options that control th
 ## Evaluating CryptPEFT Privacy-preserving Inference Efficiency
 Requirements:
 
-    CrypTen Library: Ensure that the CrypTen library is successfully installed.
+    We used SHAFT in our evaluation, ensuring the use of the CrypTen library provided by [SHAFT](https://github.com/andeskyl/SHAFT).
     For CPU Evaluation: Ensure sufficient memory is available.
     For GPU Evaluation: Ensure at least two GPUs are available for evaluation.
+    Ensure that the LAN or WAN network environment simulation is completed before the evaluation.
+
 
 Running the Benchmark:
 
@@ -48,4 +50,3 @@ Terminal 1: Run the following command to start the second evaluation:
 Configuration:
 
 You can modify the secure_inference.sh script as needed. For additional configurations, refer to the secure_inference.py file.
-Troubleshooting
