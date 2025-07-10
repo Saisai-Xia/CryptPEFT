@@ -80,7 +80,7 @@ class EncoderBlock(nn.Module):
 
         self.self_attention = LinAtten(dim=hidden_dim, num_heads=num_heads, attn_drop=dropout, proj_drop=dropout)
 
-        self.dropout = nn.Dropout(dropout)
+        #self.dropout = nn.Dropout(dropout)
 
         self.ln_2 = norm_layer(hidden_dim)
 
@@ -92,7 +92,7 @@ class EncoderBlock(nn.Module):
         torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
         x = self.ln_1(input)
         x = self.self_attention(x)
-        x = self.dropout(x)
+        #x = self.dropout(x)
         x = x + input
         y = self.ln_2(x)
         y = self.mlp(y)
@@ -183,7 +183,7 @@ class CryptPEFT_adapter(nn.Module):
         super().__init__()
         self.n_embd = d_model
         self.down_size = bottleneck
-        self.dropout = dropout
+        self.dropout = nn.Dropout(dropout)
         self.scale = float(adapter_scaler)
 
         self.lora_A = nn.Linear(in_features=self.n_embd, out_features=self.down_size)
@@ -204,7 +204,7 @@ class CryptPEFT_adapter(nn.Module):
 
     def forward(self, x):
         x = self.lora_A(x)
-        x = nn.functional.dropout(x, p=self.dropout, training=self.training)
+        x = self.dropout(x)
         x = self.blks(x)
         x = self.lora_B(x)
         x = x * self.scale

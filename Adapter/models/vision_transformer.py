@@ -16,6 +16,7 @@ from torchvision.models._utils import _ovewrite_named_param, handle_legacy_inter
 
 from .adapter import CryptPEFT_adapter, adaptformer, lora
 
+
 class ConvStemConfig(NamedTuple):
     out_channels: int
     kernel_size: int
@@ -166,7 +167,7 @@ class Encoder(nn.Module):
             if self.config.adapt_on and not self.config.fulltune and self.config.adapter_type == "single_adapter":
                 if i == self.layer_id:
                     if self.config.adapter_arch == "CryptPEFT":
-                        print("hellp")
+                        
                         adapters[f"adapter_layer_{i}"] = CryptPEFT_adapter(num_heads=self.config.num_head, attention_dropout=0.0, norm_layer=norm_layer,d_model=hidden_dim,
                                                                     bottleneck=self.config.bottleneck, dropout=0.1, adapter_scaler=self.config.adapter_scaler, mlp_dim=self.config.bottleneck, num_blk=self.config.num_repeat_blk)
                 else:
@@ -199,6 +200,19 @@ class Encoder(nn.Module):
                 
             input = input + adapter_output
             #input = adapter_output
+        elif self.config.adapt_on and not self.config.fulltune and self.config.adapter_type == "single_adapter":
+            adapter_output = torch.tensor(0)
+            i = 0
+            for layer, adapter in zip(self.layers, self.adapters):
+                if i != self.layer_id:
+                    input = layer(input)
+                else:  
+                    adapter_input = adapter_output + input
+                    input = layer(input)
+                    adapter_output = adapter(adapter_input) + adapter_input
+                i += 1
+                
+            input = input + adapter_output
         else:
             input = self.layers(input)
 
