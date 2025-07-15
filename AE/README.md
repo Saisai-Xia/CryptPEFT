@@ -1,8 +1,6 @@
 # Installation
 
-The source code can be downloaded [here](https://anonymous.4open.science/r/CryptPEFT-8405).
-
-Run:
+Run:(If your device only has a CPU, make sure to replace `environment.yml` with `environment_cpu.yml`)
 ```bash
 conda env create -f environment.yml
 conda activate adapter310
@@ -16,21 +14,22 @@ cd ..
 
 The main evaluation scripts and programs for NDSS-2026-AE are located in the AE folder. Inside this folder, you will find the following contents:
 ```bash
-checkpoints [folder]    Stores the weights of the adapters found during the search
-eval_private_inference_result [folder]    Stores the evaluation results for private inference
-eval_result [folder]    Stores the evaluation results for model utility
-search_result [folder]    Stores the results of the search algorithm
-ablation_LinAtten_PI.sh [script]    Reports the results in Fig. 8 and Fig. 9
-eval_CRYPTPEFT_PI.sh [script]    Reports the results in Table VI for CRYPTPEFT
-eval_model_utility.py [code]    Code for the experiments in Table V
-eval_model_utility.sh [script]    Reports the results in Table V
-eval_MPCViT_PI.sh [script]    Reports the results in Table VIII
-eval_PEFT_AdaptFormer_PI.sh [script]    Reports the results in Table VI for the PEFT_AdaptFormer baseline
-eval_PEFT_LoRA_PI.sh [script]    Reports the results in Table VI for the PEFT_LoRA baseline
-eval_SFT_Last_2_Layers_PI.sh [script]    Reports the results in Table VI for the SFT_Last_2_Layers baseline
-eval_SFT_Last_PI.sh [script]    Reports the results in Table VI for the SFT_Last baseline
+checkpoints [folder] Stores the weights of the adapters found during the search
+eval_private_inference_result [folder] Stores the evaluation results for private inference
+eval_result [folder] Stores the evaluation results for model utility
+search_result [folder] Stores the results of the search algorithm
+ablation_LinAtten_PI.sh [script] Reports the results in Fig. 8 and Fig. 9
+eval_CRYPTPEFT_PI.sh [script] Reports the results in Table VI for CRYPTPEFT
+eval_model_utility.py [code] Code for the experiments in Table V
+eval_model_utility.sh [script] Reports the results in Table V
+eval_MPCViT_PI.sh [script] Reports the results in Table VIII
+eval_PEFT_AdaptFormer_PI.sh [script] Reports the results in Table VI for the PEFT_AdaptFormer baseline
+eval_PEFT_LoRA_PI.sh [script] Reports the results in Table VI for the PEFT_LoRA baseline
+eval_SFT_Last_2_Layers_PI.sh [script] Reports the results in Table VI for the SFT_Last_2_Layers baseline
+eval_SFT_Last_PI.sh [script] Reports the results in Table VI for the SFT_Last baseline
+get_fig.sh [script] Script to get fig8 and fig9
 README.md
-search.sh [script]    Script to run the search algorithm
+search.sh [script] Script to run the search algorithm
 ```
 # Running Experiments
 
@@ -197,8 +196,8 @@ sudo tc qdisc add dev lo root netem rate 5gbit delay 4ms
 For 5 Gbps, open two terminals $0 and $1, and run:
 
 ```bash
-$0: bash ablation_LinAtten_PI.sh 0 5G
-$1: bash ablation_LinAtten_PI.sh 1 5G
+$0: bash AE/ablation_LinAtten_PI.sh 0 5G
+$1: bash AE/ablation_LinAtten_PI.sh 1 5G
 ```
 
 ### 4.2. Reset network
@@ -207,7 +206,18 @@ run:
 ```bash
 sudo tc qdisc del dev lo root
 ```
+### 4.3. Run all baselines and plot figures
 
-### 4.3. Results
+To obtain Fig. 8 and Fig. 9, we use the `get_fig.sh` script, which includes a series of steps such as simulating different bandwidths, performing private inference, processing results, and plotting figures.
+
+Open a terminal and navigate to the CryptPEFT directory.
+
+run
+
+```bash
+bash AE/get_fig.sh
+```
+
+### 4.4. Results
 
 The experimental data will be saved in the folder `AE/eval_private_inference_result`, with filenames starting with *ablation_LinAtten*.

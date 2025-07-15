@@ -221,7 +221,7 @@ def search_adapter(args, seed):
     H = [1,2,4,6,10,12]
     R = [60, 120, 180, 240, 300]
     S = [1,2,3,4,5,6]
-    latency_target = 4.5 #2.7 -> 1.5 -> 4.5 -> 6.0 -> 7.5 -> 9.0 -> 10.5 -> 12.0
+    latency_target = 6.0 #2.7 -> 1.5 -> 4.5 -> 6.0 -> 7.5 -> 9.0 -> 10.5 -> 12.0
     logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"{latency_target}_CryptPEFT_auto_search_"+args.dataset, path=args.log_dir)
     num_choices_list = [6, 5]  
     controller = Controller(num_choices_list)
