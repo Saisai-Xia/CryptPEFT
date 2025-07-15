@@ -211,17 +211,3 @@ sudo tc qdisc del dev lo root
 ### 4.3. Results
 
 The experimental data will be saved in the folder `AE/eval_private_inference_result`, with filenames starting with *ablation_LinAtten*.
-
-## 5. Adapter search based on NAS
-
-In response to the reviewers’ feedback, we plan to include an ablation study to highlight the effectiveness of our proposed NAS strategy, which was not part of the original submission. As such, we understand that this component may not be considered during the AE process.
-
-This part corresponds to our updated code version, the related data are not yet included in the original submission. We will update the explanation on how to reproduce the paper’s results later. For now, we only provide the command to run the search algorithm.
-
-Make sure you are in the project root directory CryptPEFT.
-
-Run:
-```bash
-bash AE/search.sh
-```
-The above search process uses the flowers102 dataset, which is relatively small. With an RTX 4090 GPU, the search can be completed within one hour. If you have sufficient time, you may consider replacing it with a larger-scale dataset. Note that if you do not have a GPU and instead use an 8-core CPU, it will take approximately 20 hours.

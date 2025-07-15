@@ -3,3 +3,4 @@ __pycache__/
 Adapter/experiments/dataset/*
 eval/search_result/*
 eval/eval_CryptPEFT_1.sh
+AE/readme_bak.md
