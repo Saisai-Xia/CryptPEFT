@@ -11,7 +11,7 @@ import torchvision
 import argparse
 from log_utils import Logger
 import gc
-
+import os
 from crypten.config import cfg
 cfg.communicator.verbose = True
 crypten.debug.configure_logging()
@@ -187,7 +187,10 @@ def run_test(args):
     rank = comm.get().get_rank()
 
     if rank == Alice:
-        logger = Logger(log2file=True, mode=f"A_{args.method}_{args.dataset}", path="benchmark/Final_logs")
+        path = "benchmark/Final_logs"
+        if not os.path.exists(path):
+            os.makedirs(path)
+        logger = Logger(log2file=True, mode=f"A_{args.method}_{args.dataset}", path=path)
 
     if args.method in ["lora", "adaptformer", "mpcvit"]:
         #get input size
@@ -248,7 +251,7 @@ def run_test(args):
         plaintext_model = plaintext_model.to(f"cuda:{rank}")
         dummy_input.cuda(rank)
         dummy_model.cuda(rank)
-
+    repeat = 10
     plaintext_model.eval()
     dummy_model.eval()
     with torch.no_grad():
@@ -256,7 +259,8 @@ def run_test(args):
         #plaintext time
         if args.method in ["simple_fine_tuning", "CryptPEFT"]:
             time_s = time.time()
-            output = plaintext_model(plaintext_input)
+            for i in range(repeat):
+                output = plaintext_model(plaintext_input)
             time_e = time.time()
             plaintext_time = time_e - time_s
             
@@ -267,21 +271,22 @@ def run_test(args):
 
         comm.get().reset_communication_stats()
         time_s = time.time()
-        output = dummy_model(dummy_input)
+        for i in range(repeat):
+            output = dummy_model(dummy_input)
         time_e = time.time()
 
     cost = {}
 
-    cost["total_time"] = (time_e - time_s + plaintext_time) / args.batch_size
-    cost["comm_round"] = comm.get().get_communication_stats()["rounds"]
-    cost["comm_cost"] = (comm.get().get_communication_stats()["bytes"] / (1024*1024*1024)) / args.batch_size #B -> GB
-    cost["comm_time"] = comm.get().get_communication_stats()["time"] / args.batch_size
+    cost["total_time"] = (time_e - time_s + plaintext_time) / args.batch_size / repeat
+    cost["comm_round"] = comm.get().get_communication_stats()["rounds"] / repeat
+    cost["comm_cost"] = (comm.get().get_communication_stats()["bytes"] / (1024*1024*1024)) / args.batch_size / repeat #B -> GB
+    cost["comm_time"] = comm.get().get_communication_stats()["time"] / args.batch_size / repeat
     
     if rank == Alice:
         for key, value in cost.items():
             logger.add_line(f"{key}: {value}")
 
-    print("finish, and print communication stats")
+    print(f"finish, and print communication stats of {repeat} executions.")
     comm.get().print_communication_stats()
 
 def main():

@@ -7,5 +7,6 @@ do
     --net $2 \
     --method simple_fine_tuning \
     --dataset $dataset \
+    --mode eval_Last_2_Layers \
     --transfer_scope 2
 done

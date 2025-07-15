@@ -38,24 +38,24 @@ class MLP(cnn.Module):
         super(MLP, self).__init__()
         self.dim = args.dim
         self.mlp_hidden_dim = args.mlp_dim
-        dropout = args.mlp_drop
+        self.dropout = args.mlp_drop
         
         self.fc1 = cnn.Linear(self.dim, self.mlp_hidden_dim)
         self.act = cnn.ReLU() if args.method in ['CryptPEFT','base_adapter'] else "gelu"
-        self.drop1 = cnn.Dropout(p = dropout)
+        self.drop1 = cnn.Dropout()
         self.norm = cnn.BatchNorm2d(num_features=self.mlp_hidden_dim, eps=args.layer_norm_eps)
         self.fc2 = cnn.Linear(self.mlp_hidden_dim, self.dim)
-        self.drop2 = cnn.Dropout(p = dropout)
+        self.drop2 = cnn.Dropout()
     
     def forward(self, x):
         x = self.fc1(x)
         x = self.act(x) if self.act != "gelu" else x.gelu()
-        x = self.drop1(x)
+        x = self.drop1((x, self.dropout, self.training))
         x_size = x.size()
         x = x.view(-1, self.mlp_hidden_dim)
         x = self.norm(x).view(x_size)
         x = self.fc2(x)
-        x = self.drop2(x)
+        x = self.drop2((x, self.dropout, self.training))
         return x
     
 class Attention(cnn.Module):
@@ -65,15 +65,15 @@ class Attention(cnn.Module):
         self.num_heads = args.num_heads
         self.head_dim = args.dim // args.num_heads
         self.scale = math.sqrt(self.head_dim)
-        attn_drop = args.attn_drop
-        proj_drop = args.proj_drop
+        self.attn_drop_p = args.attn_drop
+        self.proj_drop_p = args.proj_drop
 
         self.q = cnn.Linear(args.dim, args.dim)
         self.k = cnn.Linear(args.dim, args.dim)
         self.v = cnn.Linear(args.dim, args.dim)
-        self.attn_drop = cnn.Dropout(p = attn_drop)
+        self.attn_drop = cnn.Dropout()
         self.proj = cnn.Linear(args.dim, args.dim)
-        self.proj_drop = cnn.Dropout(p = proj_drop)
+        self.proj_drop = cnn.Dropout()
 
         self.attn_reset = cnn.Linear(197, 197) if args.method in ['CryptPEFT','base_adapter'] else cnn.Softmax(dim=-1)
 
@@ -92,12 +92,12 @@ class Attention(cnn.Module):
         attention_scores = attention_scores / self.scale
         #attention_probs = self.softmax(attention_scores)
         
-        attention_probs = self.attn_drop(self.attn_reset(attention_scores))
+        attention_probs = self.attn_drop((self.attn_reset(attention_scores),self.attn_drop_p,self.training))
         x = attention_probs.matmul(v_layer)
         x = x.transpose(1,2)
         x = x.reshape(x_size)
         x = self.proj(x)
-        x = self.proj_drop(x)
+        x = self.proj_drop((x,self.proj_drop_p,self.training))
         return x
     
 class EncoderBlock(cnn.Module):
@@ -107,7 +107,8 @@ class EncoderBlock(cnn.Module):
         self.dim = args.dim
         self.ln_1 = cnn.BatchNorm2d(self.dim, eps=args.layer_norm_eps)
         self.self_attention = Attention(args)
-        self.dropout = cnn.Dropout(args.encoder_drop)
+        self.dropout_p = args.encoder_drop
+        self.dropout = cnn.Dropout()
 
         self.ln_2 = cnn.BatchNorm2d(self.dim, eps=args.layer_norm_eps)
         self.mlp = MLP(args)
@@ -125,7 +126,7 @@ class EncoderBlock(cnn.Module):
         x = self.ln_1(x).view(x_size)
         
         x = self.self_attention(x)
-        x = self.dropout(x)
+        x = self.dropout((x,self.dropout_p,self.training))
         x = x + input
 
         if hasattr(self, 'adapter'):
@@ -214,7 +215,8 @@ class Encoder(cnn.Module):
         self.dim = args.dim
         
         self.pos_embedding = cnn.Parameter(torch.empty(1, self.seq_length, self.dim).normal_(std=0.02))
-        self.dropout = cnn.Dropout(p=args.encoder_drop)
+        self.dropout = cnn.Dropout()
+        self.p = args.encoder_drop
         self.layers = cnn.ModuleList()
         for i in range(args.num_encoderblk):
             self.layers.append(EncoderBlock(args=args))
@@ -224,7 +226,7 @@ class Encoder(cnn.Module):
     def forward(self, x):
         assert len(x.size()) == 3, f"Expected (batch_size, seq_length, dim) got {x.size()}"
         x = x + self.pos_embedding.data
-        x = self.dropout(x)
+        x = self.dropout((x, self.p, self.training))
         for layer in self.layers:
             x = layer(x)
         
@@ -273,7 +275,8 @@ class Adapter(cnn.Module):
         self.dim = args.dim
         self.mlp_dim = args.mlp_dim
         self.down_size = args.bottleneck
-        self.dropout = cnn.Dropout(p=args.adjuster_drop)
+        self.dropout = cnn.Dropout()
+        self.p = args.adjuster_drop
         self.scale = float(args.adjuster_scale)
         args.dim = args.bottleneck
         args.mlp_dim = args.bottleneck
@@ -299,7 +302,7 @@ class Adapter(cnn.Module):
         
     def forward(self, x):
         x = self.down_proj(x)
-        x = self.dropout(x)
+        x = self.dropout((x, self.p, self.training))
         for blk in self.blks:
             x = blk(x)
         x = self.up_proj(x)
@@ -450,7 +453,8 @@ class MPCViTEncoder(cnn.Module):
         self.dim = args.dim
         
         self.pos_embedding = cnn.Parameter(torch.empty(1, self.seq_length, self.dim).normal_(std=0.02))
-        self.dropout = cnn.Dropout(p=args.encoder_drop)
+        self.dropout = cnn.Dropout()
+        self.p = args.encoder_drop
         self.layers = cnn.ModuleList()
         for i in range(args.num_encoderblk):
             args.alpha = args.alpha_list[i]
@@ -461,7 +465,7 @@ class MPCViTEncoder(cnn.Module):
     def forward(self, x):
         assert len(x.size()) == 3, f"Expected (batch_size, seq_length, dim) got {x.size()}"
         x = x + self.pos_embedding.data
-        x = self.dropout(x)
+        x = self.dropout((x, self.p, self.training))
         for layer in self.layers:
             x = layer(x)
         
@@ -477,8 +481,8 @@ class MPCViTEncoderLayer(cnn.Module):
         self.dim = args.dim
         self.ln_1 = cnn.BatchNorm2d(self.dim, eps=args.layer_norm_eps)
         self.self_attention = MPCViTAttn(args)
-        self.dropout = cnn.Dropout(args.encoder_drop)
-
+        self.dropout = cnn.Dropout()
+        self.p = args.encoder_drop
         self.ln_2 = cnn.BatchNorm2d(self.dim, eps=args.layer_norm_eps)
         self.mlp = MPCViTMLP(args)
 
@@ -489,7 +493,7 @@ class MPCViTEncoderLayer(cnn.Module):
         x = x.view(-1, self.dim)
         x = self.ln_1(x).view(x_size)
         x = self.self_attention(x)
-        x = self.dropout(x)
+        x = self.dropout((x, self.p, self.training))
         x = x + input
 
         y_size = x.size()
@@ -506,10 +510,10 @@ class MPCViTMLP(cnn.Module):
         super(MPCViTMLP, self).__init__()
         self.dim = args.dim
         self.mlp_hidden_dim = args.mlp_dim
-        dropout = args.mlp_drop
+        self.dropout = args.mlp_drop
         
         self.fc1 = cnn.Linear(self.dim, self.mlp_hidden_dim)
-        self.drop1 = cnn.Dropout(p = dropout)
+        self.drop1 = cnn.Dropout()
         
         self.fc2 = cnn.Linear(self.mlp_hidden_dim, self.dim)
     
@@ -522,7 +526,7 @@ class MPCViTMLP(cnn.Module):
         # comm_cost = (comm.get().get_communication_stats()["bytes"] / (1024*1024*1024)) - comm_cost_0 #B -> GB
         # print("act_comm_round", comm_round)
         # print("act_comm_cost", comm_cost)
-        x = self.drop1(x)
+        x = self.drop1((x, self.dropout, self.training))
         x = self.fc2(x)
         return x
 
@@ -534,17 +538,17 @@ class MPCViTAttn(cnn.Module):
         self.head_dim = args.dim // args.num_heads
         self.alpha = args.alpha # mask list for a layer
         self.scale = math.sqrt(self.head_dim)
-        attn_drop = args.attn_drop
-        proj_drop = args.proj_drop
+        self.attn_drop_p = args.attn_drop
+        self.proj_drop_p = args.proj_drop
 
         self.seq_length = args.seq_length
         
         self.q = cnn.Linear(args.dim, args.dim)
         self.k = cnn.Linear(args.dim, args.dim)
         self.v = cnn.Linear(args.dim, args.dim)
-        self.attn_drop = cnn.Dropout(p = attn_drop)
+        self.attn_drop = cnn.Dropout()
         self.proj = cnn.Linear(args.dim, args.dim)
-        self.proj_drop = cnn.Dropout(p = proj_drop)
+        self.proj_drop = cnn.Dropout()
 
         mask = torch.as_tensor(self.alpha, dtype=torch.bool)
 
@@ -571,12 +575,12 @@ class MPCViTAttn(cnn.Module):
         # print("softmax_comm_round", comm_round)
         # print("softmax_comm_cost", comm_cost)
         
-        attention_scores = self.attn_drop(attention_scores)
+        attention_scores = self.attn_drop((attention_scores, self.attn_drop_p, self.training))
 
         return attention_scores.matmul(v_layer)
 
     def ScaleAttn_score(self, q_layer, k_layer, v_layer):
-        attention_scores = self.attn_drop(k_layer.transpose(-1, -2).matmul(v_layer))
+        attention_scores = self.attn_drop((k_layer.transpose(-1, -2).matmul(v_layer), self.attn_drop_p, self.training))
 
         attention_scores = q_layer.matmul(attention_scores)
 
@@ -607,7 +611,7 @@ class MPCViTAttn(cnn.Module):
         x = x.transpose(1,2)
         x = x.reshape(x_size)
         x = self.proj(x)
-        x = self.proj_drop(x)
+        x = self.proj_drop((x,self.proj_drop_p, self.training))
         return x
 
 #eval efficiency of some attention methods
@@ -618,15 +622,15 @@ class BaseAttention(cnn.Module):
         self.num_heads = args.num_heads
         self.head_dim = args.dim // args.num_heads
         self.scale = math.sqrt(self.head_dim)
-        attn_drop = args.attn_drop
-        proj_drop = args.proj_drop
+        self.attn_drop_p = args.attn_drop
+        self.proj_drop_p = args.proj_drop
 
         self.q = cnn.Linear(args.dim, args.dim)
         self.k = cnn.Linear(args.dim, args.dim)
         self.v = cnn.Linear(args.dim, args.dim)
-        self.attn_drop = cnn.Dropout(p = attn_drop)
+        self.attn_drop = cnn.Dropout()
         self.proj = cnn.Linear(args.dim, args.dim)
-        self.proj_drop = cnn.Dropout(p = proj_drop)
+        self.proj_drop = cnn.Dropout()
 
         if args.atten_method == 'MPCFormer':
             self.softmax = MPCFormer_2Quda()
@@ -655,12 +659,12 @@ class BaseAttention(cnn.Module):
         # print("softmax_comm_round", comm_round)
         # print("softmax_comm_cost", comm_cost)
         
-        attention_probs = self.attn_drop(attention_scores)
+        attention_probs = self.attn_drop((attention_scores,self.attn_drop_p, self.training))
         x = attention_probs.matmul(v_layer)
         x = x.transpose(1,2)
         x = x.reshape(x_size)
         x = self.proj(x)
-        x = self.proj_drop(x)
+        x = self.proj_drop((x, self.proj_drop_p, self.training))
         return x
     
 class BaseMLP(cnn.Module):
@@ -668,7 +672,7 @@ class BaseMLP(cnn.Module):
         super(BaseMLP, self).__init__()
         self.dim = args.dim
         self.mlp_hidden_dim = args.mlp_dim
-        dropout = args.mlp_drop
+        self.dropout = args.mlp_drop
         
         self.fc1 = cnn.Linear(self.dim, self.mlp_hidden_dim)
         if args.atten_method == 'MPCFormer':
@@ -676,10 +680,10 @@ class BaseMLP(cnn.Module):
         elif args.atten_method == 'SHAFT':
             self.act = "gelu"
             
-        self.drop1 = cnn.Dropout(p = dropout)
+        self.drop1 = cnn.Dropout()
         self.norm = cnn.BatchNorm2d(num_features=self.mlp_hidden_dim, eps=args.layer_norm_eps)
         self.fc2 = cnn.Linear(self.mlp_hidden_dim, self.dim)
-        self.drop2 = cnn.Dropout(p = dropout)
+        self.drop2 = cnn.Dropout()
     
     def forward(self, x):
         x = self.fc1(x)
@@ -691,12 +695,12 @@ class BaseMLP(cnn.Module):
         # comm_cost = (comm.get().get_communication_stats()["bytes"] / (1024*1024*1024)) - comm_cost_0 #B -> GB
         # print("act_comm_round", comm_round)
         # print("act_comm_cost", comm_cost)
-        x = self.drop1(x)
+        x = self.drop1((x, self.dropout, self.training))
         x_size = x.size()
         x = x.view(-1, self.mlp_hidden_dim)
         x = self.norm(x).view(x_size)
         x = self.fc2(x)
-        x = self.drop2(x)
+        x = self.drop2((x, self.dropout, self.training))
         return x
         
         
@@ -733,8 +737,8 @@ class BaseEncoderBlock(cnn.Module):
         self.dim = args.dim
         self.ln_1 = cnn.BatchNorm2d(self.dim, eps=args.layer_norm_eps)
         # self.self_attention = Attention(args)
-        self.dropout = cnn.Dropout(args.encoder_drop)
-
+        self.dropout = cnn.Dropout()
+        self.p = args.encoder_drop
         self.ln_2 = cnn.BatchNorm2d(self.dim, eps=args.layer_norm_eps)
         # self.mlp = MLP(args)
 
@@ -755,7 +759,7 @@ class BaseEncoderBlock(cnn.Module):
         # comm_cost = (comm.get().get_communication_stats()["bytes"] / (1024*1024*1024)) - comm_cost_0 #B -> GB
         # print("attention_comm_round", comm_round)
         # print("attention_comm_cost", comm_cost)
-        x = self.dropout(x)
+        x = self.dropout((x, self.p, self.training))
         x = x + input
 
         y_size = x.size()
@@ -778,9 +782,9 @@ class BaseAdapter(cnn.Module):
         super(BaseAdapter, self).__init__()
         self.dim = args.dim
         self.down_size = args.bottleneck
-        self.dropout = cnn.Dropout(p=args.adjuster_drop)
+        self.dropout = cnn.Dropout()
         self.scale = float(args.adjuster_scale)
-
+        self.p = args.adjuster_drop
         self.down_proj = cnn.Linear(self.dim, self.down_size)
         
         self.blks = cnn.ModuleList()
@@ -799,7 +803,7 @@ class BaseAdapter(cnn.Module):
         
     def forward(self, x):
         x = self.down_proj(x)
-        x = self.dropout(x)
+        x = self.dropout((x, self.p, self.training))
         for blk in self.blks:
             x = blk(x)
         x = self.up_proj(x)

@@ -15,7 +15,7 @@ import gc
 from crypten.config import cfg
 cfg.communicator.verbose = True
 crypten.debug.configure_logging()
-
+import os
 
 def get_args_parser():
     parser = argparse.ArgumentParser(description="CrypTen Cifar Training")
@@ -58,7 +58,7 @@ def get_args_parser():
     parser.add_argument("--ablation", default=False, action='store_true')
 
     parser.add_argument("--net", type=str, default="none")
-
+    parser.add_argument("--mode", type=str, default="none")
 
     return parser
 
@@ -176,8 +176,8 @@ def set_config(args):
     config["batch_size"] = args.batch_size
     config["atten_method"] = args.atten_method
     config["ablation"] = args.ablation
-
-
+    config["net"] = args.net
+    config["mode"] = args.mode
     return config
 
 
@@ -189,7 +189,13 @@ def run_test(args):
     rank = comm.get().get_rank()
 
     if rank == Alice:
-        logger = Logger(log2file=True, mode=f"{args.net}_{args.method}_{args.dataset}", path="AE/eval_private_inference_result")
+        path = "AE/eval_private_inference_result"
+        if not os.path.exists(path):
+            os.makedirs(path)
+        if args.mode == "ablation_LinAtten":
+            logger = Logger(log2file=True, mode=f"{args.mode}_{args.net}_{args.atten_method}_{args.dataset}", path=path)
+        else:
+            logger = Logger(log2file=True, mode=f"{args.mode}_{args.net}_{args.dataset}", path=path)
 
     if args.method in ["lora", "adaptformer", "mpcvit"]:
         #get input size
@@ -285,7 +291,7 @@ def run_test(args):
         for key, value in cost.items():
             logger.add_line(f"{key}: {value}")
 
-    print("finish, and print communication stats")
+    print(f"finish, and print communication stats of {repeat} executions.")
     comm.get().print_communication_stats()
 
 def main():

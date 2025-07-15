@@ -6,5 +6,6 @@ do
     --rank $1 \
     --net $2 \
     --method adaptformer \
+    --mode eval_AdaptFormer \
     --dataset $dataset
 done

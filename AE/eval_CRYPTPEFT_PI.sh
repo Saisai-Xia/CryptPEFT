@@ -6,5 +6,6 @@ do
     --rank $1 \
     --method CryptPEFT \
     --net $2 \
+    --mode eval_CryptPEFT \
     --dataset $dataset
 done

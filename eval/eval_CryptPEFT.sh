@@ -5,15 +5,15 @@ for lr in 0.01
 do
 for scale in 0.5
 do
-for ds in svhn
+for ds in flowers102 cifar10 svhn
 do
 for arch in CryptPEFT
 do
-for option in reproduce
+for option in test
 do
     python3 eval/eval_CryptPEFT.py \
     --batch_size 50 \
-    --device cuda:1 \
+    --device cuda:0 \
     --option $option \
     --adapt_on \
     --adapter_type $adapter \
@@ -26,7 +26,7 @@ do
     --output_dir Adapter/experiments/output \
     --lr $lr \
     --dataset $ds \
-    --log_dir eval/reproduce_result
+    --log_dir eval/search_result
 
 done
 done

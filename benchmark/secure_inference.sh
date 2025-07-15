@@ -3,7 +3,7 @@ for batch_size in 1
 do
 for dataset in cifar100
 do
-for method in mpcvit
+for method in CryptPEFT
 do
 for atten_method in CryptPEFT
 do

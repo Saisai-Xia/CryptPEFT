@@ -6,5 +6,6 @@ do
     --rank $1 \
     --net $2 \
     --method lora \
+    --mode eval_LoRA \
     --dataset $dataset
 done

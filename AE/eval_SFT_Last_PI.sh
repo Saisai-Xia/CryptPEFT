@@ -7,5 +7,6 @@ do
     --net $2 \
     --method SFT \
     --dataset $dataset \
+    --mode eval_Last_Layer \
     --transfer_scope 1
 done

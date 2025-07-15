@@ -14,6 +14,6 @@ do
     --data_path Adapter/experiments/dataset \
     --lr 0.01 \
     --dataset $ds \
-    --log_dir CRYPTPEFT_NDSS_AE/eval_result
+    --log_dir AE/search_result
 done
 done

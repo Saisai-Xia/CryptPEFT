@@ -8,7 +8,10 @@ from demoloader.dataloader import *
 #logger
 from log_utils import Logger
 import time
+from eval.controller import Controller
 
+import numpy as np
+import random
 # ptimized adapter structures obtained by NAS -> [H,R,S]
 Utility_first = {
     "cifar10":[12,240,4],
@@ -89,7 +92,7 @@ def get_args_parser():
 
     parser.add_argument('--resume', default=False, action='store_true', help='Load the adapter weights from a checkpoint or retrain them')
 
-    parser.add_argument('--eval_method', default='CRYPTPEFT_Efficiency_first', type=str, choices=['CRYPTPEFT_Efficiency_first', 'CRYPTPEFT_Utility_first', 'PEFT_LoRA', 'PEFT_AdaptFormer', 'SFT_Last_Layer', 'SFT_Last_2_Layers'])
+    parser.add_argument('--eval_method', default='CRYPTPEFT_Efficiency_first', type=str, choices=['CRYPTPEFT_Efficiency_first', 'CRYPTPEFT_Utility_first', 'PEFT_LoRA', 'PEFT_AdaptFormer', 'SFT_Last_Layer', 'SFT_Last_2_Layers', 'search'])
 
 
     return parser
@@ -247,7 +250,7 @@ def test_CryptPEFT(args, device):
     else:
         file = f'CRYPTPEFT_NDSS_AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth'
         if os.path.exists(file):
-            checkpoint = torch.load(f'CRYPTPEFT_NDSS_AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth')
+            checkpoint = torch.load(f'CRYPTPEFT_NDSS_AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth', map_location='cpu')
             if args.eval_method in ['CRYPTPEFT_Efficiency_first', 'CRYPTPEFT_Utility_first']:
                 model.heads.load_state_dict(checkpoint['heads'])
                 model.encoder.ln.load_state_dict(checkpoint['ln'])
@@ -269,35 +272,46 @@ def search_adapter(args):
     DEVICE = torch.device(args.device)
     H = [1,2,4,6,10,12]
     R = [60, 120, 180, 240, 300]
-    S = [1,2,3]
-    logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"s_auto_search_"+args.dataset, path=args.log_dir)
+    S = [1,2,3,4,5,6]
+    latency_target = 2.7
+    logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"CryptPEFT_auto_search_"+args.dataset, path=args.log_dir)
+    num_choices_list = [6, 5]  
+    controller = Controller(num_choices_list)
+    optimizer = torch.optim.Adam(controller.parameters(), lr=0.001)
     res = {}
     s = 1
-    width = 2
+    width = 4
     utility = 0.0
-    latency_target = 2.7 # 3.0 -> 2.7 -> 6.0 -> 2.7
     utility_target = 1.1*{'cifar10': 97.51, 'cifar100': 87.41, 'flowers102': 90.63, 'svhn': 91.81, 'food101': 85.56}[args.dataset]
     start_time = time.time()
     while s <= max(S):
-        for h in H:
-            if latency(h,R[0],s) > latency(H[0],R[0],s+width):
+        stop_cnt = 0
+        for step in range(len(H) * len(R)):
+            if stop_cnt >= 3:
                 break
-            if latency(h,R[0],s) < latency_target:
-                args.rank = R[0]
-                args.first_layer = 12-s
-                args.num_head = h
-                print(f"now-> num_head{args.num_head} rank{args.rank} scope{s}")
+            actions, log_probs = controller()
+            args.rank = R[actions[1]]
+            args.first_layer = 12-s
+            args.num_head = H[actions[0]]
+            if latency(args.num_head, args.rank, s) > latency(H[0],R[0],s+width) or latency(args.num_head, args.rank, s) > latency_target:
+                reward = 0
+                stop_cnt += 1
+                acc = 0
+            else:
                 acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
                 if acc > utility:
+                    stop_cnt = 0
                     utility = acc
-                    h_best = h
+                    h_best = args.num_head
                     s_best = s
-                    r_best = R[0]
+                    r_best = args.rank
                     res['acc'] = utility
                     res['n_param'] = n_param
                     res['num_head'] = h_best
                     res['rank'] = r_best
                     res['scope'] = s_best
+                else:
+                    stop_cnt += 1
                 if utility > utility_target:
                     res['acc'] = utility
                     res['n_param'] = n_param
@@ -305,33 +319,16 @@ def search_adapter(args):
                     res['rank'] = r_best
                     res['scope'] = s_best
                     break
-        if utility > utility_target:
-            break
-        for r in R[1:]:
-            if latency(h_best,r,s) > latency(H[0],R[0],s+width):
-                break
-            if latency(h_best,r,s) < latency_target:
-                args.rank = r
-                args.first_layer = 12-s
-                args.num_head = h_best
-                print(f"now-> num_head{args.num_head} rank{args.rank} scope{s}")
-                acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
-                if acc > utility:
-                    utility = acc
-                    r_best = r
-                    s_best = s
-                    res['acc'] = utility
-                    res['n_param'] = n_param
-                    res['num_head'] = h_best
-                    res['rank'] = r_best
-                    res['scope'] = s_best
-                if utility > utility_target:
-                    res['acc'] = utility
-                    res['n_param'] = n_param
-                    res['num_head'] = h_best
-                    res['rank'] = r_best
-                    res['scope'] = s_best
-                    break
+                reward = acc / 100.0
+
+            loss = -sum(log_probs) * reward
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            logger.add_line(f"Step {s}->{step+1}: Actions->(h,r,s) = {[H[actions[0]], R[actions[1]], s]}, Reward = {reward:.4f}, stop_cnt = {stop_cnt}, acc = {acc}")
+            #logger.add_line(f"Step {s}->{step+1}: Actions->(h,r,s) = {[H[actions[0]], R[actions[1]], s]}, Reward = {reward:.4f}")
+
         if utility > utility_target:
             break
         s += 1
@@ -348,6 +345,13 @@ def search_adapter(args):
 
 def main(args):
     DEVICE = torch.device(args.device)
+    seed = 42
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    if not os.path.exists(args.log_dir):
+        os.makedirs(args.log_dir)
     if args.eval_method in ['CRYPTPEFT_Efficiency_first', 'CRYPTPEFT_Utility_first']:
         args.adapt_on = True
         args.adapter_type = "CryptPEFT"

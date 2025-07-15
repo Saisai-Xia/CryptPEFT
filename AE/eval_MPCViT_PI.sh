@@ -6,5 +6,6 @@ do
     --rank $1 \
     --method mpcvit \
     --net $2 \
+    --mode eval_MPCViT \
     --dataset $dataset
 done

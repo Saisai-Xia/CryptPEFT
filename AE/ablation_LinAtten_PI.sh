@@ -8,5 +8,6 @@ do
     --method CryptPEFT \
     --net $2 \
     --dataset cifar100 \
+    --mode ablation_LinAtten \
     --ablation 
 done

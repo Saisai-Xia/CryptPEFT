@@ -5,7 +5,7 @@ for ds in cifar10 cifar100 flowers102 svhn food101
 do
     python3 AE/eval_model_utility.py \
     --batch_size 50 \
-    --device cuda:0 \
+    --device cpu \
     --resume \
     --eval_method $eval_method \
     --adapter_scaler 0.5 \
@@ -14,6 +14,6 @@ do
     --data_path Adapter/experiments/dataset \
     --lr 0.01 \
     --dataset $ds \
-    --log_dir CRYPTPEFT_NDSS_AE/eval_result
+    --log_dir AE/eval_result
 done
 done
