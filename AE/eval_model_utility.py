@@ -206,11 +206,11 @@ def get_CryptPEFT_checkpoint(args, device):
                     'heads': model.heads.state_dict(),
                     'ln': model.encoder.ln.state_dict(),
                     'adapters': model.encoder.adapters.state_dict(),
-                }, f'CRYPTPEFT_NDSS_AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth')
+                }, f'AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth')
     else:
         torch.save({
                     'model': model.state_dict(),
-                }, f'CRYPTPEFT_NDSS_AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth')
+                }, f'AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth')
 
     return accuracy_test, n_parameters / 1.e6
 
@@ -248,9 +248,9 @@ def test_CryptPEFT(args, device):
             _, _, accuracy_test, _ = train_and_test_model(model, trainloader, testloader, criterion, optimizer, device, epoch)
             scheduler.step()
     else:
-        file = f'CRYPTPEFT_NDSS_AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth'
+        file = f'AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth'
         if os.path.exists(file):
-            checkpoint = torch.load(f'CRYPTPEFT_NDSS_AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth', map_location='cpu')
+            checkpoint = torch.load(f'AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth', map_location='cpu')
             if args.eval_method in ['CRYPTPEFT_Efficiency_first', 'CRYPTPEFT_Utility_first']:
                 model.heads.load_state_dict(checkpoint['heads'])
                 model.encoder.ln.load_state_dict(checkpoint['ln'])
