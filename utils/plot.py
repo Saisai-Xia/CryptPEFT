@@ -132,12 +132,13 @@ def plot_fig9a(args):
     data = {model: {} for model in models}
 
 
-    for filename in os.listdir(folder_path):
-        filepath = os.path.join(folder_path, filename)
-        if not os.path.isfile(filepath):
-            continue
+    
 
-        for (bw, model), prefix in prefixes.items():
+    for (bw, model), prefix in prefixes.items():
+        for filename in os.listdir(folder_path):
+            filepath = os.path.join(folder_path, filename)
+            if not os.path.isfile(filepath):
+                continue
             if filename.startswith(prefix):
                 with open(filepath, "r") as f:
                     content = f.read()
@@ -146,6 +147,7 @@ def plot_fig9a(args):
                             comm_time = float(line.split(":")[1].strip())
                             data[model][bw] = comm_time
                             break
+                break
 
 
     comm_time_matrix = []
@@ -196,12 +198,11 @@ def plot_fig9b(args):
     data = {model: {} for model in models}
 
 
-    for filename in os.listdir(folder_path):
-        filepath = os.path.join(folder_path, filename)
-        if not os.path.isfile(filepath):
-            continue
-
-        for (bw, model), prefix in prefixes.items():
+    for (bw, model), prefix in prefixes.items():
+        for filename in os.listdir(folder_path):
+            filepath = os.path.join(folder_path, filename)
+            if not os.path.isfile(filepath):
+                continue
             if filename.startswith(prefix):
                 with open(filepath, "r") as f:
                     content = f.read()
@@ -210,6 +211,7 @@ def plot_fig9b(args):
                             comm_time = float(line.split(":")[1].strip())
                             data[model][bw] = comm_time
                             break
+                break
 
 
     comm_time_matrix = []
