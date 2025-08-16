@@ -10,7 +10,12 @@ To set up the required environment, you can use the provided `environment.yml` f
 
 ```bash
 conda env create -f environment.yml
-conda activate <environment_name>
+conda activate adapter310
+
+#install SHAFT
+git clone https://github.com/andeskyl/SHAFT
+cd SHAFT
+pip install .
 ```
 
 ## Evaluating CryptPEFT Utility

@@ -718,7 +718,11 @@ class BaseEncoderBlock(cnn.Module):
         elif args.atten_method == 'MPCViT':
             #2ReLU/scaleAttn + GeLU
             if args.dataset in ['cifar100']: #1 head
-                args.alpha = [1,] # for testing 50%->RSAttn 50%->scaleAttn
+                if args.num_heads == 1:
+                    args.alpha = [1,]
+                else:
+                    n = args.num_heads
+                    args.alpha = [1, 0] * ((n - 1) // 2) + [1] if n % 2 == 1 else [1, 0] * (n // 2) # for testing 50%->RSAttn 50%->scaleAttn
             else:#2 head
                 args.alpha = [1,0]
             args.seq_length = 197

@@ -14,7 +14,7 @@ import numpy as np
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser('CRYPTPEFT: Parameter-Efficient Fine-Tuning for Privacy-Preserving Neural Network Inferenc', add_help=False)
+    parser = argparse.ArgumentParser('CRYPTPEFT: Efficient and Private Neural Network Inference via Parameter-Efficient Fine-Tuning', add_help=False)
     parser.add_argument('--batch_size', default=64, type=int,
                         help='Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus')
     parser.add_argument('--epochs', default=20, type=int)
@@ -216,12 +216,15 @@ def test_CryptPEFT(args, device):
 def latency(h,r,s):
     return  (0.03828*h + 0.00465*r + 0.48139)*s + 0.3212
 
+def lan_latency(h,r,s):
+    return  (0.027466*h + 0.002962*r + 0.123125)*s + 0.24229
+
 def search_adapter(args, seed):
     DEVICE = torch.device(args.device)
     H = [1,2,4,6,10,12]
     R = [60, 120, 180, 240, 300]
     S = [1,2,3,4,5,6]
-    latency_target = 6.0 #2.7 -> 1.5 -> 4.5 -> 6.0 -> 7.5 -> 9.0 -> 10.5 -> 12.0
+    latency_target = 2.7
     logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"{latency_target}_CryptPEFT_auto_search_"+args.dataset, path=args.log_dir)
     num_choices_list = [6, 5]  
     controller = Controller(num_choices_list)
@@ -230,6 +233,7 @@ def search_adapter(args, seed):
     s = 1
     width = 4
     utility = 0.0
+    #utility_target = {'cifar10': 97.26, 'cifar100': 85.7, 'flowers102': 92.6, 'svhn': 91.51, 'food101': 84.7}[args.dataset]
     utility_target = 1.1*{'cifar10': 97.51, 'cifar100': 87.41, 'flowers102': 90.63, 'svhn': 91.81, 'food101': 85.56}[args.dataset]
     start_time = time.time()
     while s <= max(S):
@@ -242,7 +246,7 @@ def search_adapter(args, seed):
             args.first_layer = 12-s
             args.num_head = H[actions[0]]
             if latency(args.num_head, args.rank, s) > latency(H[0],R[0],s+width) or latency(args.num_head, args.rank, s) > latency_target:
-                reward = 0
+                reward = 1.0 / latency(args.num_head, args.rank, s)
                 stop_cnt += 1
                 acc = 0
             else:
@@ -267,7 +271,7 @@ def search_adapter(args, seed):
                     res['rank'] = r_best
                     res['scope'] = s_best
                     break
-                reward = acc / 100.0
+                reward = acc / 100.0 + 1.0 / latency(args.num_head, args.rank, s)
 
             loss = -sum(log_probs) * reward
 
@@ -303,158 +307,9 @@ def main(args):
 
     H = [1,2,4,6,10,12]
     R = [60, 120, 180, 240, 300]
-    S = [1,2,3]
-    if args.option == "utility_first":
-        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"s_auto_search_"+args.dataset, path=args.log_dir)
-        res = {}
-        s = 1
-        width = 2
-        utility = 0.0
-        latency_target = 10.0 # 10.0 or more
-        utility_target = 1.1*{'cifar10': 97.51, 'cifar100': 87.41, 'flowers102': 90.63, 'svhn': 91.81, 'food101': 85.56}[args.dataset]
-        start_time = time.time()
-        while s <= max(S):
-            for h in H:
-                if latency(h,R[0],s) > latency(H[0],R[0],s+width):
-                    break
-                if latency(h,R[0],s) < latency_target:
-                    args.rank = R[0]
-                    args.first_layer = 12-s
-                    args.num_head = h
-                    print(f"now-> num_head{args.num_head} rank{args.rank} scope{s}")
-                    acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
-                    if acc > utility:
-                        utility = acc
-                        h_best = h
-                        s_best = s
-                        r_best = R[0]
-                        res['acc'] = utility
-                        res['n_param'] = n_param
-                        res['num_head'] = h_best
-                        res['rank'] = r_best
-                        res['scope'] = s_best
-                    if utility > utility_target:
-                        res['acc'] = utility
-                        res['n_param'] = n_param
-                        res['num_head'] = h_best
-                        res['rank'] = r_best
-                        res['scope'] = s_best
-                        break
-            if utility > utility_target:
-                break
-            for r in R[1:]:
-                if latency(h_best,r,s) > latency(H[0],R[0],s+width):
-                    break
-                if latency(h_best,r,s) < latency_target:
-                    args.rank = r
-                    args.first_layer = 12-s
-                    args.num_head = h_best
-                    print(f"now-> num_head{args.num_head} rank{args.rank} scope{s}")
-                    acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
-                    if acc > utility:
-                        utility = acc
-                        r_best = r
-                        s_best = s
-                        res['acc'] = utility
-                        res['n_param'] = n_param
-                        res['num_head'] = h_best
-                        res['rank'] = r_best
-                        res['scope'] = s_best
-                    if utility > utility_target:
-                        res['acc'] = utility
-                        res['n_param'] = n_param
-                        res['num_head'] = h_best
-                        res['rank'] = r_best
-                        res['scope'] = s_best
-                        break
-            if utility > utility_target:
-                break
-            s += 1
-
-        end_time = time.time()
-        print(f"Search time: {(end_time - start_time)//60} minutes")
-        res['dataset'] = args.dataset
-        res['search_time'] = (end_time - start_time) // 60
-
-        print("auto search finish")
-        for key, value in res.items():
-                logger.add_line(f"{key}: {value}")
-    elif args.option == "efficiency_first":
-        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"s_auto_search_"+args.dataset, path=args.log_dir)
-        res = {}
-        s = 1
-        width = 1
-        utility = 0.0
-        latency_target = 2.7 # 3.0 -> 2.7 -> 6.0 -> 2.7
-        utility_target = 1.1*{'cifar10': 97.51, 'cifar100': 87.41, 'flowers102': 90.63, 'svhn': 91.81, 'food101': 85.56}[args.dataset]
-        start_time = time.time()
-        while s <= max(S):
-            for h in H:
-                if latency(h,R[0],s) > latency(H[0],R[0],s+width):
-                    break
-                if latency(h,R[0],s) < latency_target:
-                    args.rank = R[0]
-                    args.first_layer = 12-s
-                    args.num_head = h
-                    print(f"now-> num_head{args.num_head} rank{args.rank} scope{s}")
-                    acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
-                    if acc > utility:
-                        utility = acc
-                        h_best = h
-                        s_best = s
-                        r_best = R[0]
-                        res['acc'] = utility
-                        res['n_param'] = n_param
-                        res['num_head'] = h_best
-                        res['rank'] = r_best
-                        res['scope'] = s_best
-                    if utility > utility_target:
-                        res['acc'] = utility
-                        res['n_param'] = n_param
-                        res['num_head'] = h_best
-                        res['rank'] = r_best
-                        res['scope'] = s_best
-                        break
-            if utility > utility_target:
-                break
-            for r in R[1:]:
-                if latency(h_best,r,s) > latency(H[0],R[0],s+width):
-                    break
-                if latency(h_best,r,s) < latency_target:
-                    args.rank = r
-                    args.first_layer = 12-s
-                    args.num_head = h_best
-                    print(f"now-> num_head{args.num_head} rank{args.rank} scope{s}")
-                    acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
-                    if acc > utility:
-                        utility = acc
-                        r_best = r
-                        s_best = s
-                        res['acc'] = utility
-                        res['n_param'] = n_param
-                        res['num_head'] = h_best
-                        res['rank'] = r_best
-                        res['scope'] = s_best
-                    if utility > utility_target:
-                        res['acc'] = utility
-                        res['n_param'] = n_param
-                        res['num_head'] = h_best
-                        res['rank'] = r_best
-                        res['scope'] = s_best
-                        break
-            if utility > utility_target:
-                break
-            s += 1
-
-        end_time = time.time()
-        print(f"Search time: {(end_time - start_time)//60} minutes")
-        res['dataset'] = args.dataset
-        res['search_time'] = (end_time - start_time) // 60
-
-        print("auto search finish")
-        for key, value in res.items():
-                logger.add_line(f"{key}: {value}")
-    elif args.option == "OWC_PEFT":
+    S = [1,2,3,4,5,6]
+    
+    if args.option == "OWC_PEFT":
         logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"OWC_PEFT_{args.adapter_arch}_"+args.dataset, path=args.log_dir)
         args.first_layer = 0
         acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
@@ -466,30 +321,31 @@ def main(args):
         logger.add_line(f"acc:{acc}")
         logger.add_line(f"n_param:{n_param}")
     elif args.option == "reproduce":
-        method = "efficiency_first" # utility first or efficiency first
+        # WAN environment
+        method = "utility_first" # utility first or efficiency first
         logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"{args.option}_{method}_{args.dataset}", path=args.log_dir)
         if method == "utility_first":
             if args.dataset == "cifar10":
-                adapter_struct = [12,240,4]
+                adapter_struct = [10,180,2]
             elif args.dataset == "cifar100":
-                adapter_struct = [1,180,2]
+                adapter_struct = [2,300,2]
             elif args.dataset == "flowers102":
-                adapter_struct = [12,180,4]
+                adapter_struct = [1,300,1]
             elif args.dataset == "svhn":
-                adapter_struct = [10,180,6]
+                adapter_struct = [12,180,3]
             elif args.dataset == "food101":
-                adapter_struct = [10,240,4]
+                adapter_struct = [12,300,1]
         elif method == "efficiency_first":
             if args.dataset == "cifar10":
-                adapter_struct = [6,180,1]
+                adapter_struct = [2,120,2]
             elif args.dataset == "cifar100":
-                adapter_struct = [6,60,2]
+                adapter_struct = [1,300,1]
             elif args.dataset == "flowers102":
-                adapter_struct = [4,60,2]
+                adapter_struct = [1,180,1]
             elif args.dataset == "svhn":
-                adapter_struct = [10,60,2]
+                adapter_struct = [12,300,1]
             elif args.dataset == "food101":
-                adapter_struct = [12,120,1]
+                adapter_struct = [4,180,1]
         args.num_head = adapter_struct[0]
         args.rank = adapter_struct[1]
         args.first_layer = 12 - adapter_struct[2]
@@ -526,39 +382,8 @@ def main(args):
             acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
             logger.add_line(f"acc:{acc}")
             logger.add_line(f"n_param:{n_param}")
-    elif args.option == "test":
+    elif args.option == "search":
         search_adapter(args, seed = seed)
-    elif args.option == "ablation_NAS":
-        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"ablation_NAS_"+args.dataset, path=args.log_dir)
-        H = [1,2,4,6,10,12]
-        R = [60, 120, 180, 240, 300]
-        S = [1,2,3]
-        res = {}
-        max_acc = 0.0
-        start_time = time.time()
-        for num_head in H:
-            for rank in R:
-                for s in S:
-                    args.rank = rank
-                    args.first_layer = 12-s
-                    args.num_head = num_head
-                    print(f"now-> num_head{num_head} rank{rank} scope{s}")
-                    acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
-                    if(acc > max_acc):
-                        max_acc = acc
-                        res['acc'] = max_acc
-                        res['n_param'] = n_param
-                        res['num_head'] = num_head
-                        res['rank'] = rank
-                        res['scope'] = s
-        end_time = time.time()
-        print(f"Search time: {(end_time - start_time)//60} minutes")
-        res['dataset'] = args.dataset
-        res['search_time'] = (end_time - start_time) // 60
-
-        print("auto search finish")
-        for key, value in res.items():
-                logger.add_line(f"{key}: {value}")
     elif args.option == "NAS_RL":
         logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"NAS_RL_"+args.dataset, path=args.log_dir)
         H = [1,2,4,6,10,12]
@@ -589,9 +414,6 @@ def main(args):
                 stop_cnt = 0
             else:
                 stop_cnt += 1
-            # if acc < max_acc:
-            #     reward = acc / 100.0 - 0.1
-            # else:
             reward = acc / 100.0
 
 
@@ -611,7 +433,8 @@ def main(args):
         print("auto search finish")
         for key, value in res.items():
                 logger.add_line(f"{key}: {value}")
-
+    elif args.option == "test":
+        pass
     
 if __name__ == '__main__':
     args = get_args_parser()

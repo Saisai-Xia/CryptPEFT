@@ -18,7 +18,7 @@ crypten.debug.configure_logging()
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser(description="CrypTen Cifar Training")
+    parser = argparse.ArgumentParser(description="CRYPTPEFT: Efficient and Private Neural Network Inference via Parameter-Efficient Fine-Tuning")
     parser.add_argument(
         "--world_size",
         type=int,
@@ -56,7 +56,8 @@ def get_args_parser():
     parser.add_argument("--batch_size", type=int, default = 64)
     parser.add_argument("--transfer_scope", type=int, default = 1)
     parser.add_argument("--ablation", default=False, action='store_true')
-
+    parser.add_argument("--h", type=int, default = 12)
+    parser.add_argument("--r", type=int, default = 120)
 
     return parser
 
@@ -121,11 +122,29 @@ def set_config(args):
         use_PEFT = None,
         batch_size = args.batch_size,
         )
-    cifar100_CryptPEFT_adapter_set = {'h': 1, 'r': 60, 's': 2}
-    food101_CryptPEFT_adapter_set = {'h': 2, 'r': 120, 's': 2}
-    svhn_CryptPEFT_adapter_set = {'h': 2, 'r': 60, 's': 2}
-    cifar10_CryptPEFT_adapter_set = {'h': 1, 'r': 120, 's': 2}
-    flowers102_CryptPEFT_adapter_set = {'h': 1, 'r': 120, 's': 2}
+    WAN = True
+    if WAN:
+        cifar10_CryptPEFT_adapter_set = {'h': 2, 'r': 120, 's': 2}
+        cifar100_CryptPEFT_adapter_set = {'h': 1, 'r': 300, 's': 1}
+        food101_CryptPEFT_adapter_set = {'h': 4, 'r': 180, 's': 1}
+        svhn_CryptPEFT_adapter_set = {'h': 12, 'r': 300, 's': 1}
+        flowers102_CryptPEFT_adapter_set = {'h': 1, 'r': 180, 's': 1}
+
+    NAS_RL = False
+    if NAS_RL:
+        cifar100_CryptPEFT_adapter_set = {'h': 2, 'r': 120, 's': 5}
+        food101_CryptPEFT_adapter_set = {'h': 12, 'r': 300, 's': 6}
+        svhn_CryptPEFT_adapter_set = {'h': 10, 'r': 240, 's': 6}
+        cifar10_CryptPEFT_adapter_set = {'h': 10, 'r': 240, 's': 6}
+        flowers102_CryptPEFT_adapter_set = {'h': 1, 'r': 240, 's': 2}
+    
+    LAN = False
+    if LAN:
+        cifar10_CryptPEFT_adapter_set = {'h': 4, 'r': 120, 's': 1}
+        cifar100_CryptPEFT_adapter_set = {'h': 1, 'r': 240, 's': 1}
+        food101_CryptPEFT_adapter_set = {'h': 6, 'r': 180, 's': 1}
+        svhn_CryptPEFT_adapter_set = {'h': 12, 'r': 60, 's': 1}
+        flowers102_CryptPEFT_adapter_set = {'h': 1, 'r': 120, 's': 1}
 
     if args.dataset == "cifar100":
         config.num_classes = 100
@@ -137,6 +156,8 @@ def set_config(args):
         config.num_classes = 10
     elif args.dataset == "flowers102":
         config.num_classes = 102
+    elif args.dataset == "test":
+        config.num_classes = 100
     
     if args.method == "lora":
         config.use_PEFT = "lora"
@@ -165,6 +186,10 @@ def set_config(args):
             config.num_heads = flowers102_CryptPEFT_adapter_set['h']
             config.bottleneck = flowers102_CryptPEFT_adapter_set['r']
             config.transfer_scope = flowers102_CryptPEFT_adapter_set['s']
+        elif args.dataset == "test":
+            config.num_heads = args.h
+            config.bottleneck = args.r
+            config.transfer_scope = args.transfer_scope
     elif args.method == "base_adapter":
         config.num_heads = 2
         config.bottleneck = 120
@@ -187,10 +212,10 @@ def run_test(args):
     rank = comm.get().get_rank()
 
     if rank == Alice:
-        path = "benchmark/Final_logs"
+        path = "benchmark/logs"
         if not os.path.exists(path):
             os.makedirs(path)
-        logger = Logger(log2file=True, mode=f"A_{args.method}_{args.dataset}", path=path)
+        logger = Logger(log2file=True, mode=f"{args.method}_{args.dataset}", path=path)
 
     if args.method in ["lora", "adaptformer", "mpcvit"]:
         #get input size
