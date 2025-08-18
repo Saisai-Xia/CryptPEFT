@@ -7,3 +7,4 @@ eval/eval_CryptPEFT_1.sh
 AE/readme_bak.md
 benchmark/LAN_costmodel/*
 benchmark/MR_logs/*
+eval/reproduce_result/*

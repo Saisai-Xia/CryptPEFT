@@ -170,11 +170,22 @@ def get_CryptPEFT_weights(args, device):
     for epoch in range(args.epochs):
         _, _, accuracy_test, _ = train_and_test_model(model, trainloader, testloader, criterion, optimizer, device, epoch)
         scheduler.step()
+    #mkdir eval/checkpoints if not exists
+    Path('eval/checkpoints').mkdir(parents=True, exist_ok=True)
+
+    if args.option == "get_weights_utility_WAN":
+        name = f'eval/checkpoints/utility_WAN_CryptPEFT_weights_{args.dataset}.pth'
+    elif args.option == "get_weights_utility_LAN":
+        name = f'eval/checkpoints/utility_LAN_CryptPEFT_weights_{args.dataset}.pth'
+    elif args.option == "get_weights_efficiency_LAN":
+        name = f'eval/checkpoints/efficiency_LAN_CryptPEFT_weights_{args.dataset}.pth'
+    elif args.option == "get_weights_efficiency_WAN":
+        name = f'eval/checkpoints/efficiency_WAN_CryptPEFT_weights_{args.dataset}.pth'
     torch.save({
                 'heads': model.heads.state_dict(),
                 'ln': model.encoder.ln.state_dict(),
                 'adapters': model.encoder.adapters.state_dict(),
-            }, f'CryptPEFT_weights_{args.dataset}.pth')
+            }, name)
 
 
     return accuracy_test, n_parameters / 1.e6
@@ -219,7 +230,7 @@ def latency(h,r,s):
 def lan_latency(h,r,s):
     return  (0.027466*h + 0.002962*r + 0.123125)*s + 0.24229
 
-def search_adapter(args, seed):
+def search_adapter(args):
     DEVICE = torch.device(args.device)
     H = [1,2,4,6,10,12]
     R = [60, 120, 180, 240, 300]
@@ -289,7 +300,6 @@ def search_adapter(args, seed):
     print(f"Search time: {(end_time - start_time)//60} minutes")
     res['dataset'] = args.dataset
     res['search_time'] = (end_time - start_time) // 60
-    res["seed"] = seed
     print("auto search finish")
     for key, value in res.items():
             logger.add_line(f"{key}: {value}")
@@ -298,13 +308,6 @@ def search_adapter(args, seed):
 def main(args):
     print(torch.cuda.is_available())
     DEVICE = torch.device(args.device)
-    seed = 42
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-
-
     H = [1,2,4,6,10,12]
     R = [60, 120, 180, 240, 300]
     S = [1,2,3,4,5,6]
@@ -322,7 +325,7 @@ def main(args):
         logger.add_line(f"n_param:{n_param}")
     elif args.option == "reproduce":
         # WAN environment
-        method = "utility_first" # utility first or efficiency first
+        method = "efficiency_first" # utility first or efficiency first
         logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"{args.option}_{method}_{args.dataset}", path=args.log_dir)
         if method == "utility_first":
             if args.dataset == "cifar10":
@@ -351,6 +354,7 @@ def main(args):
         args.first_layer = 12 - adapter_struct[2]
 
         acc, n_param = test_CryptPEFT(args=args, device=DEVICE)
+
         logger.add_line(f"acc:{acc}")
         logger.add_line(f"n_param:{n_param}")
     elif args.option == "SFT":
@@ -383,7 +387,7 @@ def main(args):
             logger.add_line(f"acc:{acc}")
             logger.add_line(f"n_param:{n_param}")
     elif args.option == "search":
-        search_adapter(args, seed = seed)
+        search_adapter(args)
     elif args.option == "NAS_RL":
         logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"NAS_RL_"+args.dataset, path=args.log_dir)
         H = [1,2,4,6,10,12]
@@ -433,8 +437,99 @@ def main(args):
         print("auto search finish")
         for key, value in res.items():
                 logger.add_line(f"{key}: {value}")
-    elif args.option == "test":
-        pass
+    
+    elif args.option == "get_weights_utility_WAN":
+        # WAN environment
+        method = "utility_first" # utility first or efficiency first
+        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"WAN_{method}_{args.dataset}", path=args.log_dir)
+        
+        if args.dataset == "cifar10":
+            adapter_struct = [10,180,2]
+        elif args.dataset == "cifar100":
+            adapter_struct = [2,300,2]
+        elif args.dataset == "flowers102":
+            adapter_struct = [1,300,1]
+        elif args.dataset == "svhn":
+            adapter_struct = [12,180,3]
+        elif args.dataset == "food101":
+            adapter_struct = [12,300,1]
+        args.num_head = adapter_struct[0]
+        args.rank = adapter_struct[1]
+        args.first_layer = 12 - adapter_struct[2]
+
+        acc, n_param = get_CryptPEFT_weights(args=args, device=DEVICE)
+        logger.add_line(f"acc:{acc}")
+        logger.add_line(f"n_param:{n_param}")
+    elif args.option == "get_weights_utility_LAN":
+        # LAN environment
+        method = "utility_first" # utility first or efficiency first
+        
+        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"LAN_{method}_{args.dataset}", path=args.log_dir)
+        
+        if args.dataset == "cifar10":
+            adapter_struct = [1,180,2]
+        elif args.dataset == "cifar100":
+            adapter_struct = [1,300,2]
+        elif args.dataset == "flowers102":
+            adapter_struct = [1,300,1]
+        elif args.dataset == "svhn":
+            adapter_struct = [12,120,3]
+        elif args.dataset == "food101":
+            adapter_struct = [10,300,1]
+        args.num_head = adapter_struct[0]
+        args.rank = adapter_struct[1]
+        args.first_layer = 12 - adapter_struct[2]
+
+        acc, n_param = get_CryptPEFT_weights(args=args, device=DEVICE)
+        logger.add_line(f"acc:{acc}")
+        logger.add_line(f"n_param:{n_param}")
+    elif args.option == "get_weights_efficiency_LAN":
+        # LAN environment
+        method = "efficiency_first" # utility first or efficiency first
+        
+        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"LAN_{method}_{args.dataset}", path=args.log_dir)
+        
+        if args.dataset == "cifar10":
+            adapter_struct = [4,120,1]
+        elif args.dataset == "cifar100":
+            adapter_struct = [1,240,1]
+        elif args.dataset == "flowers102":
+            adapter_struct = [1,120,1]
+        elif args.dataset == "svhn":
+            adapter_struct = [12,60,1]
+        elif args.dataset == "food101":
+            adapter_struct = [6,180,1]
+        args.num_head = adapter_struct[0]
+        args.rank = adapter_struct[1]
+        args.first_layer = 12 - adapter_struct[2]
+
+        acc, n_param = get_CryptPEFT_weights(args=args, device=DEVICE)
+        logger.add_line(f"acc:{acc}")
+        logger.add_line(f"n_param:{n_param}")
+    elif args.option == "get_weights_efficiency_WAN":
+        # WAN environment
+        method = "efficiency_first" # utility first or efficiency first
+        
+        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"WAN_{method}_{args.dataset}", path=args.log_dir)
+        
+        if args.dataset == "cifar10":
+            adapter_struct = [2,120,2]
+        elif args.dataset == "cifar100":
+            adapter_struct = [1,300,1]
+        elif args.dataset == "flowers102":
+            adapter_struct = [1,180,1]
+        elif args.dataset == "svhn":
+            adapter_struct = [12,300,1]
+        elif args.dataset == "food101":
+            adapter_struct = [4,180,1]
+        args.num_head = adapter_struct[0]
+        args.rank = adapter_struct[1]
+        args.first_layer = 12 - adapter_struct[2]
+
+        acc, n_param = get_CryptPEFT_weights(args=args, device=DEVICE)
+        logger.add_line(f"acc:{acc}")
+        logger.add_line(f"n_param:{n_param}")
+        
     
 if __name__ == '__main__':
     args = get_args_parser()
