@@ -27,7 +27,7 @@ eval_PEFT_AdaptFormer_PI.sh [script] Reports the results in Table VI for the PEF
 eval_PEFT_LoRA_PI.sh [script] Reports the results in Table VI for the PEFT_LoRA baseline
 eval_SFT_Last_2_Layers_PI.sh [script] Reports the results in Table VI for the SFT_Last_2_Layers baseline
 eval_SFT_Last_PI.sh [script] Reports the results in Table VI for the SFT_Last baseline
-get_fig.sh [script] Script to get fig8 and fig9
+get_fig.sh [script] Script to get fig9 and fig10
 README.md
 search.sh [script] Script to run the search algorithm
 ```
