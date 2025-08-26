@@ -15,7 +15,7 @@ def get_args_parser():
 
 
 
-def plot_fig8a(args):
+def plot_fig9a(args):
 
     files = [
         "ablation_LinAtten_1gbit_MPCFormer_cifar100",
@@ -57,7 +57,7 @@ def plot_fig8a(args):
     plt.tight_layout()
 
     output_dir = args.output_dir
-    output_file = "fig8a.png"
+    output_file = "fig9a.png"
     os.makedirs(output_dir, exist_ok=True)
     save_path = os.path.join(output_dir, output_file)
 
@@ -65,7 +65,7 @@ def plot_fig8a(args):
 
     plt.close()
 
-def plot_fig8b(args):
+def plot_fig9b(args):
 
     files = [
         "ablation_LinAtten_1gbit_MPCFormer_cifar100",
@@ -107,7 +107,7 @@ def plot_fig8b(args):
     plt.tight_layout()
 
     output_dir = args.output_dir
-    output_file = "fig8b.png"
+    output_file = "fig9b.png"
     os.makedirs(output_dir, exist_ok=True)
     save_path = os.path.join(output_dir, output_file)
 
@@ -115,11 +115,11 @@ def plot_fig8b(args):
 
     plt.close()
 
-def plot_fig9a(args):
+def plot_fig10a(args):
 
     folder_path = args.output_dir  
 
-    save_path = os.path.join(folder_path,"fig9a.png")  
+    save_path = os.path.join(folder_path,"fig10a.png")  
 
     bandwidths = ["100mbit", "500mbit", "1gbit", "5gbit"]
     models = ["MPCFormer", "MPCViT", "SHAFT", "CryptPEFT"]
@@ -181,11 +181,11 @@ def plot_fig9a(args):
     plt.savefig(save_path)
     plt.close()
 
-def plot_fig9b(args):
+def plot_fig10b(args):
 
     folder_path = args.output_dir  
 
-    save_path = os.path.join(folder_path,"fig9b.png")  
+    save_path = os.path.join(folder_path,"fig10b.png")  
 
     bandwidths = ["100mbit", "500mbit", "1gbit", "5gbit"]
     models = ["MPCFormer", "MPCViT", "SHAFT", "CryptPEFT"]
@@ -246,10 +246,10 @@ def plot_fig9b(args):
     plt.close()
 
 def main(args):
-    plot_fig8a(args)
-    plot_fig8b(args)
     plot_fig9a(args)
     plot_fig9b(args)
+    plot_fig10a(args)
+    plot_fig10b(args)
 
 if __name__ == '__main__':
     parser = get_args_parser()

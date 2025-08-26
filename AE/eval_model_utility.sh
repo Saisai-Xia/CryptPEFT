@@ -3,9 +3,11 @@ for eval_method in CRYPTPEFT_Efficiency_first CRYPTPEFT_Utility_first
 do
 for ds in cifar10 cifar100 flowers102 svhn food101
 do
+for net in WAN LAN
+do
     python3 AE/eval_model_utility.py \
     --batch_size 50 \
-    --device cpu \
+    --device cuda:0 \
     --resume \
     --eval_method $eval_method \
     --adapter_scaler 0.5 \
@@ -14,6 +16,8 @@ do
     --data_path Adapter/experiments/dataset \
     --lr 0.01 \
     --dataset $ds \
+    --net $net \
     --log_dir AE/eval_result
+done
 done
 done

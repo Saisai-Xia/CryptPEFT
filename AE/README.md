@@ -18,7 +18,7 @@ checkpoints [folder] Stores the weights of the adapters found during the search
 eval_private_inference_result [folder] Stores the evaluation results for private inference
 eval_result [folder] Stores the evaluation results for model utility
 search_result [folder] Stores the results of the search algorithm
-ablation_LinAtten_PI.sh [script] Reports the results in Fig. 8 and Fig. 9
+ablation_LinAtten_PI.sh [script] Reports the results in Fig. 9 and Fig. 10
 eval_CRYPTPEFT_PI.sh [script] Reports the results in Table VI for CRYPTPEFT
 eval_model_utility.py [code] Code for the experiments in Table V
 eval_model_utility.sh [script] Reports the results in Table V
@@ -33,7 +33,7 @@ search.sh [script] Script to run the search algorithm
 ```
 # Running Experiments
 
-## 1. Reproduce Table V
+## 1. Reproduce Table III
 According to the relevant notice from AE, we use only the `CPU` by default for evaluation. If your device has a GPU, you can modify the `device` field in the eval_model_utility.sh script to `cuda:0` or another GPU device to accelerate the experiment.
 
 Run (make sure you are in the project root directory `CryptPEFT`):
@@ -48,7 +48,7 @@ For baselines, there are four options: `PEFT_LoRA`, `PEFT_AdaptFormer`, `SFT_Las
 
 The experimental data will be saved in the folder `AE/eval_result`.
 
-## 2. Reproduce Table VI and Table VII
+## 2. Reproduce Table IV and Table V
 
 This experiment evaluates the private inference latency of CryptPEFT and various baselines under different network environments. We simulate two common settings: a wide-area network (WAN, 400 Mbps, 4 ms latency) and a local-area network (LAN, 1 Gbps, 0.5 ms latency). To closely reflect real-world scenarios, we strongly recommend using the Traffic Control (TC) tool on Linux to simulate network environments. Directly using analytical formulas to convert communication time without actual network simulation often leads to large discrepancies.
 
@@ -61,8 +61,8 @@ This experiment evaluates the private inference latency of CryptPEFT and various
 (3): Regardless of the network environment or CPU capabilities, the number of communication rounds and communication volume in private inference remain unchanged. If you are unable to simulate the network environment or if your CPU specifications differ significantly from the Intel Xeon Silver 4310, you can skip the simulation and directly follow Section 2.2 to perform private inference. In this case, replace LAN with Default in the script.Pay special attention to the data for Comm. (GB) and Comm. round in Table VII of the paper:
 | Metrics | SFT | CryptPEFT | Improvements |
 | :---: | :---: | :---: | :---: |
-| Comm. (GB) | 1.55 | 0.03 | 51.67x |
-| Comm. round | 77 | 55 | 1.40x |
+| Comm. (GB) | 1.55 | 0.06 | 25.83x |
+| Comm. round | 77 | 29 | 2.66x |
 
 ### 2.1. Simulate LAN environment
 
@@ -121,7 +121,7 @@ sudo tc qdisc del dev lo root
 
 The experimental data will be saved in the folder `AE/eval_private_inference_result`, with filenames starting with *eval_CryptPEFT* or *eval_Last_layer*.
 
-## 3. Reproduce Table VIII
+## 3. Reproduce Table VI
 
 ### 3.0. Notes
 
@@ -170,9 +170,9 @@ sudo tc qdisc del dev lo root
 
 The experimental data will be saved in the folder `AE/eval_private_inference_result`, with filenames starting with *eval_MPCViT*.
 
-## 4. Reproduce Fig. 8 and Fig. 9
+## 4. Reproduce Fig. 9 and Fig. 10
 
-This experiment evaluates the private inference efficiency of LinAtten under different network bandwidths, and compares it with common attention mechanisms. Similar to previous experiments, the inference time will vary on different devices depending on CPU cores, threads, and network simulation. However, the communication volume and number of rounds shown in Fig. 8 will remain consistent. If you cannot simulate different bandwidths, you can focus on reproducing Fig. 8.
+This experiment evaluates the private inference efficiency of LinAtten under different network bandwidths, and compares it with common attention mechanisms. Similar to previous experiments, the inference time will vary on different devices depending on CPU cores, threads, and network simulation. However, the communication volume and number of rounds shown in Fig. 9 will remain consistent. If you cannot simulate different bandwidths, you can focus on reproducing Fig. 10.
 
 ### 4.0. Adjust network bandwidth
 
@@ -208,7 +208,7 @@ sudo tc qdisc del dev lo root
 ```
 ### 4.3. Run all baselines and plot figures
 
-To obtain Fig. 8 and Fig. 9, we use the `get_fig.sh` script, which includes a series of steps such as simulating different bandwidths, performing private inference, processing results, and plotting figures.
+To obtain Fig. 9 and Fig. 10, we use the `get_fig.sh` script, which includes a series of steps such as simulating different bandwidths, performing private inference, processing results, and plotting figures.
 
 Open a terminal and navigate to the CryptPEFT directory.
 

@@ -12,21 +12,36 @@ from eval.controller import Controller
 
 import numpy as np
 import random
-# ptimized adapter structures obtained by NAS -> [H,R,S]
-Utility_first = {
-    "cifar10":[12,240,4],
-    "cifar100":[1,180,2],
-    "food101":[10,240,4],
-    "svhn":[10,180,6],
-    "flowers102":[12,180,4]
+# optimized adapter structures obtained by NAS -> [H,R,S]
+WAN_Utility_first = {
+    "cifar10":[10,180,2],
+    "cifar100":[2,300,2],
+    "food101":[12,300,1],
+    "svhn":[12,180,3],
+    "flowers102":[1,300,1]
 }
 
-Efficiency_first = {
-    "cifar10":[1,120,2],
-    "cifar100":[1,60,2],
-    "food101":[2,120,2],
-    "svhn":[2,60,2],
-    "flowers102":[1,120,2]
+WAN_Efficiency_first = {
+    "cifar10":[2,120,2],
+    "cifar100":[1,300,1],
+    "food101":[4,180,1],
+    "svhn":[12,300,1],
+    "flowers102":[1,180,1]
+}
+LAN_Utility_first = {
+    "cifar10":[1,180,2],
+    "cifar100":[1,300,2],
+    "food101":[10,300,1],
+    "svhn":[12,120,3],
+    "flowers102":[1,300,1]
+}
+
+LAN_Efficiency_first = {
+    "cifar10":[4,120,1],
+    "cifar100":[1,240,1],
+    "food101":[6,180,1],
+    "svhn":[12,60,1],
+    "flowers102":[1,120,1]
 }
 
 
@@ -69,6 +84,9 @@ def get_args_parser():
     
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
+    
+    parser.add_argument('--net', default='WAN', type=str, choices=['WAN', 'LAN'],
+                        help='communication network type')
 
 
     # custom configs
@@ -206,7 +224,7 @@ def get_CryptPEFT_checkpoint(args, device):
                     'heads': model.heads.state_dict(),
                     'ln': model.encoder.ln.state_dict(),
                     'adapters': model.encoder.adapters.state_dict(),
-                }, f'AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth')
+                }, f'AE/checkpoints/checkpoint_{args.net}_{args.eval_method}_{args.dataset}.pth')
     else:
         torch.save({
                     'model': model.state_dict(),
@@ -248,9 +266,9 @@ def test_CryptPEFT(args, device):
             _, _, accuracy_test, _ = train_and_test_model(model, trainloader, testloader, criterion, optimizer, device, epoch)
             scheduler.step()
     else:
-        file = f'AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth'
+        file = f'AE/checkpoints/checkpoint_{args.net}_{args.eval_method}_{args.dataset}.pth'
         if os.path.exists(file):
-            checkpoint = torch.load(f'AE/checkpoints/checkpoint_{args.eval_method}_{args.dataset}.pth', map_location='cpu')
+            checkpoint = torch.load(file, map_location='cpu')
             if args.eval_method in ['CRYPTPEFT_Efficiency_first', 'CRYPTPEFT_Utility_first']:
                 model.heads.load_state_dict(checkpoint['heads'])
                 model.encoder.ln.load_state_dict(checkpoint['ln'])
@@ -345,18 +363,20 @@ def search_adapter(args):
 
 def main(args):
     DEVICE = torch.device(args.device)
-    seed = 42
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
-    random.seed(seed)
     if not os.path.exists(args.log_dir):
         os.makedirs(args.log_dir)
     if args.eval_method in ['CRYPTPEFT_Efficiency_first', 'CRYPTPEFT_Utility_first']:
         args.adapt_on = True
         args.adapter_type = "CryptPEFT"
         args.adapter_arch = "CryptPEFT"
-        adapter_struct = Efficiency_first[args.dataset] if args.eval_method == 'CRYPTPEFT_Efficiency_first' else Utility_first[args.dataset]
+        if args.net == 'WAN' and args.eval_method == 'CRYPTPEFT_Utility_first':
+            adapter_struct = WAN_Utility_first[args.dataset]
+        elif args.net == 'WAN' and args.eval_method == 'CRYPTPEFT_Efficiency_first':
+            adapter_struct = WAN_Efficiency_first[args.dataset]
+        elif args.net == 'LAN' and args.eval_method == 'CRYPTPEFT_Utility_first':
+            adapter_struct = LAN_Utility_first[args.dataset]
+        elif args.net == 'LAN' and args.eval_method == 'CRYPTPEFT_Efficiency_first':
+            adapter_struct = LAN_Efficiency_first[args.dataset]
         args.num_head = adapter_struct[0]
         args.rank = adapter_struct[1]
         args.first_layer = 12 - adapter_struct[2]
@@ -373,7 +393,7 @@ def main(args):
         search_adapter(args)
     
     if args.eval_method != "search":
-        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"{args.eval_method}_{args.dataset}", path=args.log_dir)
+        logger = Logger(log2file=True if args.log_dir is not None else False, mode=f"{args.net}_{args.eval_method}_{args.dataset}", path=args.log_dir)
         acc, n_param = test_CryptPEFT(args,DEVICE)
         logger.add_line(f"========= eval result for {args.eval_method} on {args.dataset} =========")
         logger.add_line(f"acc:{acc}")

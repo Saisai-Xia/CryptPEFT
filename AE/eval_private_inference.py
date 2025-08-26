@@ -123,11 +123,20 @@ def set_config(args):
         use_PEFT = None,
         batch_size = args.batch_size,
         )
-    cifar100_CryptPEFT_adapter_set = {'h': 1, 'r': 60, 's': 2}
-    food101_CryptPEFT_adapter_set = {'h': 2, 'r': 120, 's': 2}
-    svhn_CryptPEFT_adapter_set = {'h': 2, 'r': 60, 's': 2}
-    cifar10_CryptPEFT_adapter_set = {'h': 1, 'r': 120, 's': 2}
-    flowers102_CryptPEFT_adapter_set = {'h': 1, 'r': 120, 's': 2}
+
+    
+    if args.net == "LAN":
+        cifar100_CryptPEFT_adapter_set = {'h': 1, 'r': 240, 's': 1}
+        food101_CryptPEFT_adapter_set = {'h': 6, 'r': 180, 's': 1}
+        svhn_CryptPEFT_adapter_set = {'h': 12, 'r': 60, 's': 1}
+        cifar10_CryptPEFT_adapter_set = {'h': 4, 'r': 120, 's': 1}
+        flowers102_CryptPEFT_adapter_set = {'h': 1, 'r': 120, 's': 1}
+    else:# WAN or others
+        cifar100_CryptPEFT_adapter_set = {'h': 1, 'r': 300, 's': 1}
+        food101_CryptPEFT_adapter_set = {'h': 4, 'r': 180, 's': 1}
+        svhn_CryptPEFT_adapter_set = {'h': 12, 'r': 300, 's': 1}
+        cifar10_CryptPEFT_adapter_set = {'h': 2, 'r': 120, 's': 2}
+        flowers102_CryptPEFT_adapter_set = {'h': 1, 'r': 180, 's': 1}
 
     if args.dataset == "cifar100":
         config.num_classes = 100
