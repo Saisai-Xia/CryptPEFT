@@ -56,3 +56,6 @@ Terminal 1: Run the following command to start the second evaluation:
 Configuration:
 
 You can modify the secure_inference.sh script as needed. For additional configurations, refer to the secure_inference.py file.
+
+# License
+This project is under the MIT license.
